@@ -1,6 +1,5 @@
 from rest_framework import serializers
-from .models import Ad
-from .models import User
+from .models import User, Order, Ad
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -26,3 +25,10 @@ class AdSerializer(serializers.ModelSerializer):
         model = Ad
         fields = '__all__'
         read_only_fields = ['author']
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = '__all__'
+        read_only_fields = ['buyer', 'status', 'created_at']
