@@ -1,11 +1,5 @@
 from django.contrib import admin
-from .models import User, Category, Ad, ProviderService, Financing, Event, DatabaseResource
+from .models import *
 
-
-admin.site.register(User)
-admin.site.register(Category)
-admin.site.register(Ad)
-admin.site.register(ProviderService)
-admin.site.register(Financing)
-admin.site.register(Event)
-admin.site.register(DatabaseResource)
+for model in [User, ProviderProfile, Category, Ad, AdPhoto, ProviderService, ProviderServicePhoto, Financing, Event, DatabaseResource, Application, ForumTopic, ForumPost, NotificationSubscription, PaymentTransaction, Deal, AnalyticsEvent]:
+    admin.site.register(model)

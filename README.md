@@ -1,32 +1,48 @@
 # Connect4Pro
 
-Backend API проекта Connect4Pro на Django REST Framework.
+Backend + минимальный веб-интерфейс платформы Connect4Pro по ТЗ.
 
-## Установка
+## Запуск
 
-```bash
-python -m venv .venv
-# Windows:
-.venv\\Scripts\\activate
-# Linux/macOS:
-source .venv/bin/activate
-
-pip install -r requirements.txt
+```powershell
+python -m pip install -r requirements.txt
 python manage.py migrate
-python manage.py test
 python manage.py runserver
 ```
 
+Открыть: `http://127.0.0.1:8000/`
+
 API: `http://127.0.0.1:8000/api/`
+Swagger: `http://127.0.0.1:8000/api/swagger/`
+ReDoc: `http://127.0.0.1:8000/api/redoc/`
 
-## Важные endpoints
+Для обработки напоминаний и удаления завершенных объявлений:
 
-- `POST /api/register/` — регистрация клиента (роль и Premium назначаются не через открытую регистрацию)
-- `/api/ads/` — объявления клиентов
-- `/api/provider-services/` — услуги провайдеров
-- `/api/financing/` — гранты и инвестиции
-- `/api/events/` — мероприятия
-- `/api/database-resources/` — Premium-базы
-- `/api/applications/` — заявки клиентов
-- `POST /api/calculator/` — калькулятор вероятности
-- `GET /api/analytics/` — аналитика администратора
+```powershell
+python manage.py process_platform_jobs
+```
+
+Команду можно запускать раз в день через планировщик Windows/Cron. В продакшене почтовую отправку следует заменить с console backend на SMTP.
+
+## Основные API-модули
+
+- регистрация и JWT авторизация;
+- профили клиентов и провайдеров;
+- объявления клиентов и фотографии;
+- услуги провайдеров и фотографии;
+- гранты и инвестиции;
+- мероприятия;
+- базы проектов, бизнес-планов, кейсов, доноров, инвесторов, франчайзинга и МСБ;
+- заявки;
+- форум: темы и сообщения;
+- Premium-доступ и каталог данных;
+- платежные транзакции с подготовленной архитектурой под Paybox;
+- сделки и статусы завершения;
+- email-настройки;
+- калькулятор вероятности;
+- аналитические события и расширенная админ-аналитика;
+- базовый веб-интерфейс.
+
+## Важно
+
+Реальные платежи Paybox требуют учетных данных/ключей самого Paybox. Пока проект работает без внешнего платежного шлюза и позволяет администратору подтверждать тестовую транзакцию через API.
