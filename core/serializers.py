@@ -4,7 +4,7 @@ from rest_framework import serializers
 from .models import (
     User, ProviderProfile, Category, Ad, AdPhoto, ProviderService, ProviderServicePhoto,
     Financing, Event, DatabaseResource, Application, ForumTopic, ForumPost,
-    NotificationSubscription, PaymentTransaction, Deal, AnalyticsEvent,
+    NotificationSubscription, PaymentTransaction, Deal, AnalyticsEvent, Message,
 )
 from . import services
 
@@ -307,3 +307,71 @@ class AnalyticsEventSerializer(serializers.ModelSerializer):
         model = AnalyticsEvent
         fields = '__all__'
         read_only_fields = ['user', 'created_at']
+
+
+def display_name(user):
+    return user.company_name or user.first_name or user.username
+
+
+class PublicUserSerializer(serializers.ModelSerializer):
+    """Публичный профиль. Видимость по статусу зрителя, как в «Базе данных МСБ» (ТЗ):
+    гость — только «Я предлагаю»; вошедший — плюс сектор; Premium (и сам владелец / админ) — контакты и «Я ищу».
+    «Я предлагаю» показывается только если человек дал согласие на публикацию."""
+
+    class Meta:
+        model = User
+        fields = ['id']
+
+    def to_representation(self, u):
+        request = self.context.get('request')
+        viewer = getattr(request, 'user', None)
+        logged = bool(viewer and viewer.is_authenticated)
+        full = viewer_is_premium(request) or viewer_is(request, u)
+        data = {
+            'id': u.id, 'name': display_name(u), 'username': u.username, 'role': u.role,
+            'is_premium': u.is_premium_active(), 'date_joined': u.date_joined,
+            'is_me': bool(logged and viewer.id == u.id),
+        }
+        if u.role == 'provider':
+            prof = ProviderProfile.objects.filter(provider=u).first()
+            data['provider_profile_id'] = prof.id if prof else None
+            if prof:
+                data['name'] = prof.company_name
+                data['activity'] = prof.activity
+                data['description'] = prof.description
+            return data
+        if u.consent_public_offer and u.what_i_offer:
+            data['what_i_offer'] = u.what_i_offer
+        if logged:
+            data['business_sector'] = u.business_sector
+        if full:
+            for f in ('first_name', 'last_name', 'company_name', 'email', 'phone', 'website_or_social',
+                      'region', 'employees_count', 'what_i_seek'):
+                data[f] = getattr(u, f)
+        return data
+
+
+class MessageSerializer(serializers.ModelSerializer):
+    text = serializers.CharField(max_length=2000)
+    sender_name = serializers.SerializerMethodField()
+    mine = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Message
+        fields = ['id', 'sender', 'recipient', 'sender_name', 'ad', 'text', 'created_at', 'read_at', 'mine']
+        read_only_fields = ['id', 'sender', 'created_at', 'read_at']
+
+    def get_sender_name(self, obj):
+        return display_name(obj.sender)
+
+    def get_mine(self, obj):
+        request = self.context.get('request')
+        return bool(request and request.user.is_authenticated and obj.sender_id == request.user.id)
+
+    def validate_recipient(self, user):
+        request = self.context.get('request')
+        if not user.is_active:
+            raise serializers.ValidationError('Пользователь недоступен.')
+        if request and user.id == request.user.id:
+            raise serializers.ValidationError('Нельзя написать самому себе.')
+        return user

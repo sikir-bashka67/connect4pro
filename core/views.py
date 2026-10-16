@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError, NotAuthenticated, NotFound
+from rest_framework.exceptions import PermissionDenied, ValidationError, NotAuthenticated, NotFound, Throttled
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from .permissions import IsPremiumOrReadOnly, IsAdminOrReadOnly, IsOwnerOrAdmin, IsProviderOwnerOrAdmin
@@ -552,3 +552,68 @@ class TrackAnalyticsView(APIView):
             raise ValidationError({'object_id': 'Должно быть числом.'})
         AnalyticsEvent.objects.create(event_type=event_type, user=request.user if request.user.is_authenticated else None, object_type=str(request.data.get('object_type',''))[:50], object_id=object_id, source=str(request.data.get('source',''))[:100])
         return Response({'tracked':True}, status=status.HTTP_201_CREATED)
+
+
+class PublicUserView(generics.RetrieveAPIView):
+    """Публичный профиль пользователя (для кнопки «Профиль» в объявлениях и на форуме)."""
+    permission_classes = [AllowAny]
+    serializer_class = PublicUserSerializer
+
+    def get_queryset(self):
+        qs = User.objects.filter(is_active=True)
+        user = self.request.user
+        if user.is_authenticated and user.role == 'admin':
+            return qs
+        return qs.exclude(role='admin')
+
+
+MESSAGES_PER_HOUR = 30
+
+
+class MessageViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
+    """Личные сообщения. Каждый видит только свою переписку."""
+    serializer_class = MessageSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        u = self.request.user
+        return Message.objects.filter(Q(sender=u) | Q(recipient=u)).select_related('sender', 'recipient')
+
+    def perform_create(self, serializer):
+        u = self.request.user
+        since = timezone.now() - timedelta(hours=1)
+        if Message.objects.filter(sender=u, created_at__gte=since).count() >= MESSAGES_PER_HOUR:
+            raise Throttled(detail='Слишком много сообщений за час. Попробуйте позже.')
+        serializer.save(sender=u)
+
+    @action(detail=False, methods=['get'])
+    def conversations(self, request):
+        """Список собеседников: последнее сообщение и число непрочитанных."""
+        u = request.user
+        convs = {}
+        for m in self.get_queryset().order_by('-created_at', '-id')[:1000]:
+            other = m.recipient if m.sender_id == u.id else m.sender
+            c = convs.get(other.id)
+            if c is None:
+                c = convs[other.id] = {
+                    'user': {'id': other.id, 'name': display_name(other)},
+                    'last_text': m.text[:120], 'last_at': m.created_at, 'unread': 0}
+            if m.recipient_id == u.id and m.read_at is None:
+                c['unread'] += 1
+        return Response(list(convs.values()))
+
+    @action(detail=False, methods=['get'], url_path=r'with/(?P<user_id>\d+)')
+    def thread(self, request, user_id=None):
+        """Переписка с одним человеком. Открытие помечает входящие прочитанными."""
+        other = get_object_or_404(User, pk=user_id, is_active=True)
+        qs = self.get_queryset().filter(Q(sender=other) | Q(recipient=other))
+        qs.filter(recipient=request.user, sender=other, read_at__isnull=True).update(read_at=timezone.now())
+        last = list(qs.order_by('-created_at', '-id')[:200])[::-1]
+        return Response({
+            'user': {'id': other.id, 'name': display_name(other)},
+            'messages': MessageSerializer(last, many=True, context={'request': request}).data,
+        })
+
+    @action(detail=False, methods=['get'], url_path='unread-count')
+    def unread_count(self, request):
+        return Response({'unread': Message.objects.filter(recipient=request.user, read_at__isnull=True).count()})

@@ -344,3 +344,20 @@ class AnalyticsEvent(models.Model):
     object_id = models.PositiveIntegerField(null=True, blank=True)
     source = models.CharField(max_length=100, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class Message(models.Model):
+    """Личное сообщение между двумя пользователями. ad — необязательная привязка к объявлению."""
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_messages')
+    ad = models.ForeignKey(Ad, on_delete=models.SET_NULL, null=True, blank=True, related_name='messages')
+    text = models.TextField(max_length=2000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+        indexes = [models.Index(fields=['recipient', 'read_at'], name='msg_recipient_read_idx')]
+
+    def __str__(self):
+        return f'{self.sender_id} → {self.recipient_id}: {self.text[:30]}'

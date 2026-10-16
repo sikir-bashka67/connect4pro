@@ -508,3 +508,106 @@ class AdPriorityAndBumpTests(BaseCase):
         call_command('process_platform_jobs', stdout=StringIO())
         due.refresh_from_db()
         self.assertEqual(due.last_bumped_at, first)  # интервал ещё не прошёл
+
+
+class PublicProfileTests(BaseCase):
+    def test_guest_sees_offer_only_with_consent_and_no_contacts(self):
+        r = self.api.get(f'/api/users/{self.client_u.id}/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['what_i_offer'], 'Бухгалтерия')
+        for f in ('email', 'phone', 'business_sector', 'what_i_seek'):
+            self.assertNotIn(f, r.data)
+
+    def test_no_consent_hides_offer(self):
+        self.client_u.consent_public_offer = False
+        self.client_u.save()
+        r = self.api.get(f'/api/users/{self.client_u.id}/')
+        self.assertNotIn('what_i_offer', r.data)
+
+    def test_registered_sees_sector_premium_sees_contacts(self):
+        self.api.force_authenticate(self.client2)
+        r = self.api.get(f'/api/users/{self.client_u.id}/')
+        self.assertEqual(r.data['business_sector'], 'IT')
+        self.assertNotIn('phone', r.data)
+        self.api.force_authenticate(self.premium)
+        r = self.api.get(f'/api/users/{self.client_u.id}/')
+        self.assertEqual(r.data['phone'], '+996700000001')
+        self.assertEqual(r.data['email'], 'c@x.kg')
+
+    def test_provider_profile_has_link_and_no_private_data(self):
+        r = self.api.get(f'/api/users/{self.provider.id}/')
+        self.assertEqual(r.data['provider_profile_id'], self.profile.id)
+        self.assertEqual(r.data['name'], 'Acme')
+        self.assertNotIn('email', r.data)
+        self.assertNotIn('phone', r.data)
+
+    def test_admin_profile_hidden_from_others(self):
+        self.assertEqual(self.api.get(f'/api/users/{self.admin.id}/').status_code, 404)
+
+    def test_unknown_user_404(self):
+        self.assertEqual(self.api.get('/api/users/999999/').status_code, 404)
+
+
+class MessageTests(BaseCase):
+    def send(self, who, to, text='Привет', **extra):
+        self.api.force_authenticate(who)
+        return self.api.post('/api/messages/', {'recipient': to.id, 'text': text, **extra}, format='json')
+
+    def test_guest_cannot_send_or_read(self):
+        self.assertIn(self.api.post('/api/messages/', {'recipient': self.client_u.id, 'text': 'x'},
+                                    format='json').status_code, (401, 403))
+        self.assertIn(self.api.get('/api/messages/conversations/').status_code, (401, 403))
+
+    def test_send_and_thread_marks_read(self):
+        r = self.send(self.client2, self.client_u, 'Здравствуйте')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['sender'], self.client2.id)
+        self.api.force_authenticate(self.client_u)
+        self.assertEqual(self.api.get('/api/messages/unread-count/').data['unread'], 1)
+        t = self.api.get(f'/api/messages/with/{self.client2.id}/')
+        self.assertEqual(t.status_code, 200)
+        self.assertEqual([m['text'] for m in t.data['messages']], ['Здравствуйте'])
+        self.assertFalse(t.data['messages'][0]['mine'])
+        self.assertEqual(self.api.get('/api/messages/unread-count/').data['unread'], 0)
+
+    def test_cannot_message_self_or_send_empty(self):
+        self.assertEqual(self.send(self.client_u, self.client_u).status_code, 400)
+        self.assertEqual(self.send(self.client_u, self.client2, '   ').status_code, 400)
+        self.assertEqual(self.send(self.client_u, self.client2, 'a' * 2001).status_code, 400)
+
+    def test_cannot_forge_sender(self):
+        r = self.send(self.client_u, self.client2, 'hi', sender=self.admin.id)
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r.data['sender'], self.client_u.id)
+
+    def test_third_party_cannot_read_thread(self):
+        self.send(self.client_u, self.client2, 'секрет')
+        self.api.force_authenticate(self.premium)
+        t = self.api.get(f'/api/messages/with/{self.client2.id}/')
+        self.assertEqual(t.data['messages'], [])
+        self.api.force_authenticate(self.admin)
+        self.assertEqual(self.api.get(f'/api/messages/with/{self.client2.id}/').data['messages'], [])
+
+    def test_conversations_list_groups_by_person(self):
+        self.send(self.client2, self.client_u, 'раз')
+        self.send(self.client2, self.client_u, 'два')
+        self.send(self.client_u, self.provider, 'вам')
+        self.api.force_authenticate(self.client_u)
+        data = self.api.get('/api/messages/conversations/').data
+        self.assertEqual(len(data), 2)
+        by_id = {c['user']['id']: c for c in data}
+        self.assertEqual(by_id[self.client2.id]['unread'], 2)
+        self.assertEqual(by_id[self.client2.id]['last_text'], 'два')
+        self.assertEqual(by_id[self.provider.id]['unread'], 0)
+
+    def test_message_with_ad_reference(self):
+        ad = Ad.objects.create(title='A', description='d', price=1, author=self.client_u)
+        r = self.send(self.provider, self.client_u, 'Интересует', ad=ad.id)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['ad'], ad.id)
+
+    def test_hourly_limit(self):
+        from .views import MESSAGES_PER_HOUR
+        for _ in range(MESSAGES_PER_HOUR):
+            self.assertEqual(self.send(self.client_u, self.client2).status_code, 201)
+        self.assertEqual(self.send(self.client_u, self.client2).status_code, 429)

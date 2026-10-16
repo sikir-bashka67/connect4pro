@@ -50,6 +50,17 @@ td,th{text-align:left;padding:8px 6px;border-bottom:1px solid #e6eaf2}
 @keyframes in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 #modal{position:fixed;inset:0;background:#0006;z-index:60;display:flex;align-items:center;justify-content:center;padding:16px}
 #modal .box{background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%}
+.card.link{cursor:pointer;transition:box-shadow .15s}.card.link:hover{box-shadow:0 4px 18px #0002}
+.badge{background:var(--err);color:#fff;border-radius:99px;padding:1px 7px;font-size:12px}
+.post{border-bottom:1px solid #e6eaf2;padding:10px 0}
+.post:last-child{border-bottom:0}
+.photos img{max-width:100%;max-height:280px;border-radius:10px;margin:4px 4px 4px 0}
+.logo{max-width:120px;max-height:120px;border-radius:10px;float:right;margin:0 0 8px 12px}
+.chat{max-height:55vh;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:6px 2px;margin-bottom:10px}
+.bub{max-width:80%;padding:8px 12px;border-radius:12px;background:#eef1f7;white-space:pre-wrap;word-break:break-word;align-self:flex-start}
+.bub.mine{background:var(--brand);color:#fff;align-self:flex-end}
+.bub small{display:block;opacity:.75;font-size:11px;margin-top:3px}
+.kv{margin:6px 0}.kv b{color:var(--muted);font-weight:normal;font-size:13px;display:block}
 @media(max-width:600px){
   #toasts{top:auto;bottom:14px;right:14px}
 }
@@ -96,6 +107,10 @@ td,th{text-align:left;padding:8px 6px;border-bottom:1px solid #e6eaf2}
     <select id="topicType" aria-label="Раздел"><option value="general">Общие вопросы</option><option value="grants">Гранты</option><option value="investments">Инвестиции</option><option value="business_sale">Купля-продажа бизнеса</option><option value="legal">Юридические вопросы</option></select>
     <button class="btn primary" id="topicBtn">Создать</button></div>
 </section>
+
+<section id="inbox" class="page hidden"><h2>Сообщения</h2><div id="inboxList"></div></section>
+
+<section id="detail" class="page hidden"><div id="detailBody"></div></section>
 
 <section id="calculator" class="page hidden">
   <h2>Калькулятор вероятности</h2>
@@ -173,6 +188,8 @@ function esc(v) {
 const fmtDate = s => s ? new Date(s).toLocaleDateString('ru-RU') : '—';
 const fmtMoney = (a, c) => `${Number(a).toLocaleString('ru-RU')} ${c === 'KGS' || !c ? 'сом' : c}`;
 const rows = d => (d && d.results) ? d.results : (Array.isArray(d) ? d : []);
+const clip = (v, n) => { v = String(v == null ? '' : v); return v.length > n ? v.slice(0, n).trimEnd() + '…' : v; };
+const fmtTime = s => s ? new Date(s).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
 const isPremium = () => !!(S.me && S.me.is_premium);
 
 // ---------- уведомления внутри страницы ----------
@@ -253,18 +270,42 @@ const fail = e => { if (!e.silent) toast(e.message || 'Что-то пошло н
 const safe = fn => async (...a) => { try { return await fn(...a); } catch (e) { fail(e); } };
 
 // ---------- навигация ----------
-const PAGES = [['home', 'Главная'], ['ads', 'Объявления'], ['db', 'Базы данных'], ['financing', 'Финансирование'], ['providers', 'Провайдеры'], ['events', 'Мероприятия'], ['forum', 'Форум'], ['calculator', 'Калькулятор'], ['account', 'Аккаунт']];
+const PAGES = [['home', 'Главная'], ['ads', 'Объявления'], ['db', 'Базы данных'], ['financing', 'Финансирование'], ['providers', 'Провайдеры'], ['events', 'Мероприятия'], ['forum', 'Форум'], ['calculator', 'Калькулятор'], ['inbox', 'Сообщения'], ['account', 'Аккаунт']];
 $('nav').innerHTML = PAGES.map(([id, t]) => `<button type="button" data-go="${id}">${t}</button>`).join('');
-document.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b) show(b.dataset.go); });
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-go]'); if (b) return navigate(b.dataset.go);
+  if (e.target.closest('[data-back]')) return history.length > 1 ? history.back() : navigate('home');
+  // клик по карточке или кнопке «Подробнее» открывает страницу подробностей
+  const o = e.target.closest('[data-open]');
+  if (o) { const inner = e.target.closest('button,a,input,select,textarea'); if (!inner || inner === o) navigate(o.dataset.open); }
+});
 
-const LOADERS = { home: loadHome, ads: loadAds, db: loadDb, financing: loadFinancing, providers: loadProviders, events: loadEvents, forum: loadForum, calculator: loadCalcInfo, account: loadAccount };
+const LOADERS = { home: loadHome, ads: loadAds, db: loadDb, financing: loadFinancing, providers: loadProviders, events: loadEvents, forum: loadForum, calculator: loadCalcInfo, inbox: loadInbox, account: loadAccount };
+const markNav = id => document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.go === id));
 function show(id) {
   if (!LOADERS[id]) id = 'home';
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('hidden', p.id !== id));
-  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.go === id));
-  try { history.replaceState(null, '', '#' + id); } catch (e) {}
+  markNav(id);
   safe(LOADERS[id])();
 }
+// адрес вида #ad/5 открывает страницу подробностей, обычный #ads — раздел
+let routeSeq = 0, chatTimer = null;
+function navigate(h) { if (location.hash === '#' + h) route(); else location.hash = h; }
+function route(keepScroll) {
+  clearInterval(chatTimer); chatTimer = null;
+  const h = (location.hash || '#home').slice(1);
+  const m = /^([a-z]+)\/(\d+)$/.exec(h);
+  const seq = ++routeSeq;
+  if (!keepScroll) window.scrollTo(0, 0);
+  if (m && DETAIL[m[1]]) {
+    const [parent, fn] = DETAIL[m[1]];
+    document.querySelectorAll('.page').forEach(p => p.classList.toggle('hidden', p.id !== 'detail'));
+    markNav(parent);
+    if (!keepScroll) $('detailBody').innerHTML = '<p class="empty">Загрузка…</p>';
+    runDetail(fn, Number(m[2]), seq);
+  } else show(h);
+}
+window.addEventListener('hashchange', () => route());
 
 // ---------- сессия ----------
 function renderHeader() {
@@ -273,6 +314,7 @@ function renderHeader() {
     ? `<span>${esc(m.username)}</span>${m.is_premium ? '<span class="pill prem">Premium</span>' : ''}<button class="btn" type="button" id="logoutTop">Выйти</button>`
     : '';
   const b = $('logoutTop'); if (b) b.onclick = () => logout('Вы вышли из аккаунта.', 'info');
+  updateBadge();
 }
 async function loadMe() {
   if (!S.access) { S.me = null; renderHeader(); return; }
@@ -285,6 +327,8 @@ function logout(text, type) {
   if (text) toast(text, type || 'info');
   const cur = (location.hash || '#home').slice(1);
   if (cur === 'account') safe(loadAccount)(); else if (cur === 'db') safe(loadDb)();
+  else if (cur === 'inbox' || /^chat\//.test(cur)) navigate('home');
+  else if (/\//.test(cur)) route(true);
 }
 async function doLogin(username, password) {
   const r = await fetch(API + '/token/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
@@ -346,13 +390,13 @@ async function loadHome() {
 async function loadAds() {
   const t = $('adsType').value;
   const d = await req('/ads/' + (t ? '?listing_type=' + encodeURIComponent(t) : ''));
-  $('adsList').innerHTML = rows(d).map(x => `<div class="card"><span class="pill ${x.listing_type !== 'request' ? 'ok' : ''}">${esc(LABEL.kind[x.listing_type] || 'Запрос')}</span><h3>${esc(x.title)}</h3><p>${esc(x.description)}</p><b>${fmtMoney(x.price)}</b><p class="muted small">${esc(x.author_name)} · ${fmtDate(x.created_at)}</p></div>`).join('') || '<p class="empty">Пока нет объявлений.</p>';
+  $('adsList').innerHTML = rows(d).map(x => `<div class="card link" data-open="ad/${x.id}"><span class="pill ${x.listing_type !== 'request' ? 'ok' : ''}">${esc(LABEL.kind[x.listing_type] || 'Запрос')}</span><h3>${esc(x.title)}</h3><p>${esc(clip(x.description, 160))}</p><b>${fmtMoney(x.price)}</b><p class="muted small">${esc(x.author_name)} · ${fmtDate(x.created_at)}</p><button class="btn" data-open="ad/${x.id}">Подробнее</button></div>`).join('') || '<p class="empty">Пока нет объявлений.</p>';
 }
 $('adsType').onchange = safe(loadAds);
 
 async function loadFinancing() {
   const d = await req('/financing/');
-  $('financingList').innerHTML = rows(d).map(x => `<div class="card"><span class="pill">${esc(LABEL.fin[x.financing_type] || x.financing_type)}</span><h3>${esc(x.title)}</h3><p>${esc(x.description)}</p><p><b>${esc(x.amount_description)}</b></p><small class="muted">Дедлайн: ${fmtDate(x.deadline)}</small></div>`).join('') || '<p class="empty">Пока нет программ.</p>';
+  $('financingList').innerHTML = rows(d).map(x => `<div class="card link" data-open="fin/${x.id}"><span class="pill">${esc(LABEL.fin[x.financing_type] || x.financing_type)}</span><h3>${esc(x.title)}</h3><p>${esc(clip(x.description, 160))}</p><p><b>${esc(x.amount_description)}</b></p><small class="muted">Дедлайн: ${fmtDate(x.deadline)}</small><p><button class="btn" data-open="fin/${x.id}">Подробнее</button></p></div>`).join('') || '<p class="empty">Пока нет программ.</p>';
 }
 async function loadProviders() {
   const d = await req('/provider-profiles/');
@@ -360,16 +404,16 @@ async function loadProviders() {
     const contacts = x.phone || x.email
       ? `<p class="small">${x.manager_name ? esc(x.manager_name) + '<br>' : ''}${x.phone ? esc(x.phone) + '<br>' : ''}${x.email ? esc(x.email) : ''}</p>`
       : '<p class="muted small">Контакты видны подписчикам Premium.</p>';
-    return `<div class="card"><h3>${esc(x.company_name)}</h3><p>${esc(x.activity)}</p><p>${esc(x.description)}</p><p class="muted">${esc(x.services_description)}</p>${contacts}</div>`;
+    return `<div class="card link" data-open="provider/${x.id}"><h3>${esc(x.company_name)}</h3><p>${esc(x.activity)}</p><p>${esc(clip(x.description, 160))}</p><p class="muted">${esc(clip(x.services_description, 160))}</p>${contacts}<button class="btn" data-open="provider/${x.id}">Подробнее</button></div>`;
   }).join('') || '<p class="empty">Пока нет провайдеров.</p>';
 }
 async function loadEvents() {
   const d = await req('/events/');
-  $('eventsList').innerHTML = rows(d).map(x => `<div class="card"><span class="pill">${esc(LABEL.ev[x.event_type] || x.event_type)}</span><h3>${esc(x.title)}</h3><p>${esc(x.description)}</p><p class="muted small">${fmtDate(x.date_and_time)} · ${esc(x.format)}${x.location ? ' · ' + esc(x.location) : ''}</p></div>`).join('') || '<p class="empty">Пока нет мероприятий.</p>';
+  $('eventsList').innerHTML = rows(d).map(x => `<div class="card link" data-open="event/${x.id}"><span class="pill">${esc(LABEL.ev[x.event_type] || x.event_type)}</span><h3>${esc(x.title)}</h3><p>${esc(clip(x.description, 160))}</p><p class="muted small">${fmtDate(x.date_and_time)} · ${esc(x.format)}${x.location ? ' · ' + esc(x.location) : ''}</p><button class="btn" data-open="event/${x.id}">Подробнее</button></div>`).join('') || '<p class="empty">Пока нет мероприятий.</p>';
 }
 async function loadForum() {
   const d = await req('/forum/topics/');
-  $('forumList').innerHTML = rows(d).map(x => `<div class="card"><h3>${esc(x.title)}</h3><p class="muted small">${esc(LABEL.topic[x.topic_type] || x.topic_type)} · ${esc(x.author_name)} · ${fmtDate(x.created_at)}</p></div>`).join('') || '<p class="empty">Пока нет тем.</p>';
+  $('forumList').innerHTML = rows(d).map(x => `<div class="card link" data-open="topic/${x.id}"><h3>${esc(x.title)}${x.is_closed ? ' <span class="pill">закрыта</span>' : ''}</h3><p class="muted small">${esc(LABEL.topic[x.topic_type] || x.topic_type)} · ${esc(x.author_name)} · ${fmtDate(x.created_at)}</p><button class="btn" data-open="topic/${x.id}">Открыть тему</button></div>`).join('') || '<p class="empty">Пока нет тем.</p>';
 }
 $('topicBtn').onclick = safe(async () => {
   if (!S.access) return toast('Чтобы создать тему, войдите в аккаунт.', 'warn');
@@ -500,6 +544,7 @@ async function renderMyAds() {
   $('myAds').innerHTML = list.map(x => `<div class="card" style="box-shadow:none;border:1px solid #e6eaf2;margin-bottom:10px">
     <span class="pill">${esc(LABEL.kind[x.listing_type] || 'Запрос')}</span>${x.is_completed ? '<span class="pill ok">Сделка завершена</span>' : ''}${x.auto_bump ? '<span class="pill prem">Автоподнятие</span>' : ''}
     <h3>${esc(x.title)}</h3><p class="muted small">${fmtMoney(x.price)} · ${fmtDate(x.created_at)}</p>
+    <button class="btn" data-open="ad/${x.id}">Открыть</button>
     <button class="btn" data-bump="${x.id}">Поднять</button>
     <button class="btn" data-auto="${x.id}" data-on="${x.auto_bump ? 0 : 1}">${x.auto_bump ? 'Выключить автоподнятие' : 'Включить автоподнятие'}</button>
     ${x.is_completed ? '' : `<button class="btn" data-done="${x.id}">Сделка завершена</button>`}
@@ -535,10 +580,226 @@ async function renderPayments() {
     : '<p class="empty">Платежей пока нет.</p>';
 }
 
+// ---------- страницы подробностей, профиль, сообщения ----------
+const DETAIL = {
+  ad: ['ads', renderAd], topic: ['forum', renderTopic], fin: ['financing', renderFin],
+  event: ['events', renderEvent], provider: ['providers', renderProvider],
+  user: [null, renderUser], chat: ['inbox', renderChat],
+};
+function setDetail(seq, html) { if (seq !== routeSeq) return false; $('detailBody').innerHTML = html; return true; }
+async function runDetail(fn, id, seq) {
+  try { await fn(id, seq); }
+  catch (e) {
+    if (e.silent || seq !== routeSeq) return;
+    $('detailBody').innerHTML = `<div class="card"><p>${esc(e.status === 404 ? 'Страница не найдена или уже удалена.' : e.message)}</p><button class="btn" type="button" data-go="home">На главную</button></div>`;
+  }
+}
+const backBtn = (go, label) => `<p><button class="btn" type="button" data-go="${go}">← ${label}</button></p>`;
+const imgTag = u => (typeof u === 'string' && /^(https?:\/\/|\/)/.test(u)) ? `<img src="${esc(u)}" alt="">` : '';
+const loginHint = text => `<div class="card"><p class="muted">${text}</p><button class="btn primary" type="button" data-go="account">Войти или зарегистрироваться</button></div>`;
+async function fetchAll(path) {
+  let out = [];
+  for (let page = 1; page <= 10; page++) {
+    const d = await req(path + (path.includes('?') ? '&' : '?') + 'page=' + page);
+    out = out.concat(rows(d));
+    if (!d || !d.next) break;
+  }
+  return out;
+}
+
+// форма «написать сообщение»; adId привязывает сообщение к объявлению
+function composeBox(toId, adId) {
+  if (!S.me) return loginHint('Чтобы написать сообщение, войдите в аккаунт.');
+  if (S.me.id === toId) return '';
+  return `<div class="card"><h3>Написать сообщение</h3>
+    <textarea id="msgText" rows="3" maxlength="2000" placeholder="Ваше сообщение" aria-label="Сообщение"></textarea>
+    <button class="btn primary" type="button" id="msgSend" data-to="${toId}"${adId ? ` data-ad="${adId}"` : ''}>Отправить</button>
+    <span id="msgSent"></span></div>`;
+}
+async function sendMessage(to, text, ad) {
+  const body = { recipient: to, text };
+  if (ad) body.ad = ad;
+  return req('/messages/', { method: 'POST', body });
+}
+
+async function renderAd(id, seq) {
+  const x = await req(`/ads/${id}/`);
+  const mine = !!S.me && S.me.id === x.author;
+  const photos = (x.photos || []).map(p => imgTag(p.image)).join('');
+  setDetail(seq, `${backBtn('ads', 'К объявлениям')}
+    <div class="card"><span class="pill ${x.listing_type !== 'request' ? 'ok' : ''}">${esc(LABEL.kind[x.listing_type] || 'Запрос')}</span>${x.is_completed ? '<span class="pill ok">Сделка завершена</span>' : ''}
+      <h2>${esc(x.title)}</h2>
+      <p><b>${fmtMoney(x.price)}</b></p>
+      <div class="content">${esc(x.description)}</div>
+      ${x.what_i_offer_optional ? `<div class="kv"><b>Автор предлагает</b>${esc(x.what_i_offer_optional)}</div>` : ''}
+      ${photos ? `<div class="photos">${photos}</div>` : ''}
+      <p class="muted small">Автор: ${esc(x.author_name)} · ${fmtDate(x.created_at)}</p>
+      <button class="btn" type="button" data-open="user/${x.author}">Профиль автора</button>
+      ${mine ? '<button class="btn" type="button" data-go="account">Мои объявления</button>' : ''}</div>
+    ${mine ? '<div class="card"><p class="muted">Это ваше объявление.</p></div>' : composeBox(x.author, x.id)}`);
+}
+
+async function renderTopic(id, seq) {
+  const [t, posts] = await Promise.all([req(`/forum/topics/${id}/`), fetchAll(`/forum/posts/?topic=${id}&ordering=created_at`)]);
+  const list = posts.map(p => `<div class="post"><div class="small muted"><button class="btn" type="button" data-open="user/${p.author}">${esc(p.author_name)}</button> ${fmtTime(p.created_at)}</div><div class="content">${esc(p.text)}</div></div>`).join('') || '<p class="empty">Пока нет ответов. Напишите первым.</p>';
+  let form;
+  if (t.is_closed) form = '<div class="card"><p class="muted">Тема закрыта, отвечать нельзя.</p></div>';
+  else if (!S.me) form = loginHint('Чтобы ответить, войдите в аккаунт.');
+  else form = `<div class="card"><h3>Ваш ответ</h3><textarea id="postText" rows="3" placeholder="Текст сообщения" aria-label="Текст сообщения"></textarea><button class="btn primary" type="button" id="postSend" data-topic="${t.id}">Отправить</button></div>`;
+  setDetail(seq, `${backBtn('forum', 'К форуму')}
+    <div class="card"><span class="pill">${esc(LABEL.topic[t.topic_type] || t.topic_type)}</span>${t.is_closed ? '<span class="pill">закрыта</span>' : ''}
+      <h2>${esc(t.title)}</h2>
+      <p class="muted small">Автор темы: <button class="btn" type="button" data-open="user/${t.author}">${esc(t.author_name)}</button> · ${fmtDate(t.created_at)}</p></div>
+    <div class="card"><h3>Сообщения (${posts.length})</h3>${list}</div>${form}`);
+}
+
+function applyBox(kind, id) {
+  if (!S.me) return loginHint('Чтобы подать заявку, войдите в аккаунт.');
+  if (S.me.role !== 'client') return '<div class="card"><p class="muted">Заявки подают клиенты (МСБ).</p></div>';
+  return `<div class="card"><h3>Подать заявку</h3><textarea id="applyText" rows="3" placeholder="Сопроводительное сообщение (необязательно)" aria-label="Сопроводительное сообщение"></textarea>
+    <button class="btn primary" type="button" id="applyBtn" data-kind="${kind}" data-id="${id}">Отправить заявку</button></div>`;
+}
+async function renderFin(id, seq) {
+  const x = await req(`/financing/${id}/`);
+  setDetail(seq, `${backBtn('financing', 'К финансированию')}
+    <div class="card"><span class="pill">${esc(LABEL.fin[x.financing_type] || x.financing_type)}</span>${x.sector ? `<span class="pill">${esc(x.sector)}</span>` : ''}
+      <h2>${esc(x.title)}</h2><p><b>${esc(x.amount_description)}</b></p>
+      <p class="muted small">Дедлайн: ${fmtDate(x.deadline)}</p>
+      <div class="content">${esc(x.description)}</div></div>${applyBox('financing', x.id)}`);
+}
+async function renderEvent(id, seq) {
+  const x = await req(`/events/${id}/`);
+  setDetail(seq, `${backBtn('events', 'К мероприятиям')}
+    <div class="card"><span class="pill">${esc(LABEL.ev[x.event_type] || x.event_type)}</span>${x.sector ? `<span class="pill">${esc(x.sector)}</span>` : ''}
+      <h2>${esc(x.title)}</h2>
+      <p class="muted">${fmtTime(x.date_and_time)} · ${esc(x.format)}${x.location ? ' · ' + esc(x.location) : ''}</p>
+      <div class="content">${esc(x.description)}</div></div>`);
+}
+
+async function renderProvider(id, seq) {
+  const x = await req(`/provider-profiles/${id}/`);
+  const svc = rows(await req(`/provider-services/?provider=${x.provider}`));
+  const contacts = (x.phone || x.email || x.address || x.manager_name)
+    ? `<div class="kv"><b>Контакты</b>${x.manager_name ? esc(x.manager_name) + '<br>' : ''}${x.phone ? esc(x.phone) + '<br>' : ''}${x.email ? esc(x.email) + '<br>' : ''}${x.address ? esc(x.address) : ''}</div>`
+    : '<p class="muted small">Контакты видны подписчикам Premium. Написать провайдеру можно и здесь, через сообщения.</p>';
+  const canApply = !!S.me && S.me.role === 'client';
+  const services = svc.map(v => `<div class="post"><b>${esc(v.title)}</b> · от ${fmtMoney(v.price)}<div class="content">${esc(v.description)}</div>
+    ${canApply ? `<button class="btn" type="button" data-svc="${v.id}" data-title="${esc(v.title)}">Оставить заявку</button>` : ''}</div>`).join('') || '<p class="empty">Услуг пока нет.</p>';
+  setDetail(seq, `${backBtn('providers', 'К провайдерам')}
+    <div class="card">${x.logo ? imgTag(x.logo).replace('<img ', '<img class="logo" ') : ''}<h2>${esc(x.company_name)}</h2>
+      <p><span class="pill">${esc(x.activity)}</span>${x.founded_year ? `<span class="pill">с ${esc(x.founded_year)} года</span>` : ''}</p>
+      <div class="content">${esc(x.description)}</div>
+      <div class="kv"><b>Услуги</b>${esc(x.services_description)}</div>${contacts}
+      ${x.website ? `<p><a href="${esc(x.website)}" target="_blank" rel="noopener noreferrer">${esc(x.website)}</a></p>` : ''}
+      <button class="btn" type="button" data-open="user/${x.provider}">Профиль</button></div>
+    <div class="card"><h3>Услуги</h3>${services}</div>
+    ${composeBox(x.provider)}`);
+}
+
+async function renderUser(id, seq) {
+  const u = await req(`/users/${id}/`);
+  const isClient = u.role === 'client';
+  const ads = isClient ? rows(await req(`/ads/?author=${id}&is_completed=false`)) : [];
+  const fields = [['Сектор', u.business_sector], ['Регион', u.region], ['Сотрудников', u.employees_count], ['Телефон / Telegram', u.phone], ['Почта', u.email], ['Сайт или соцсети', u.website_or_social]]
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => `<div class="kv"><b>${k}</b>${esc(v)}</div>`).join('');
+  const hidden = isClient && u.email === undefined && !u.is_me
+    ? '<p class="muted small">Контакты и подробности видны подписчикам Premium.</p>' : '';
+  setDetail(seq, `<p><button class="btn" type="button" data-back>← Назад</button></p>
+    <div class="card"><span class="pill">${esc(LABEL.role[u.role] || u.role)}</span>${u.is_premium ? '<span class="pill prem">Premium</span>' : ''}
+      <h2>${esc(u.name)}</h2><p class="muted small">На платформе с ${fmtDate(u.date_joined)}</p>
+      ${u.activity ? `<p>${esc(u.activity)}</p>` : ''}${u.description ? `<div class="content">${esc(u.description)}</div>` : ''}
+      ${u.what_i_offer ? `<div class="kv"><b>Я предлагаю</b>${esc(u.what_i_offer)}</div>` : ''}
+      ${u.what_i_seek ? `<div class="kv"><b>Я ищу</b>${esc(u.what_i_seek)}</div>` : ''}
+      ${fields}${hidden}
+      ${u.provider_profile_id ? `<button class="btn" type="button" data-open="provider/${u.provider_profile_id}">Страница провайдера</button>` : ''}
+      ${u.is_me ? '<button class="btn" type="button" data-go="account">Мой аккаунт</button>' : ''}</div>
+    ${ads.length ? `<div class="card"><h3>Объявления</h3>${ads.map(a => `<div class="post"><span class="pill">${esc(LABEL.kind[a.listing_type] || 'Запрос')}</span> <button class="btn" type="button" data-open="ad/${a.id}">${esc(a.title)}</button> <b>${fmtMoney(a.price)}</b></div>`).join('')}</div>` : ''}
+    ${composeBox(u.id)}`);
+}
+
+// ---------- переписка ----------
+async function updateBadge() {
+  const b = document.querySelector('#nav [data-go="inbox"]'); if (!b) return;
+  let n = 0;
+  if (S.me) { try { n = (await req('/messages/unread-count/')).unread; } catch (e) {} }
+  b.innerHTML = 'Сообщения' + (n ? ` <span class="badge">${n}</span>` : '');
+}
+async function loadInbox() {
+  if (!S.me) { $('inboxList').innerHTML = loginHint('Войдите, чтобы видеть свои сообщения.'); return; }
+  const list = await req('/messages/conversations/');
+  $('inboxList').innerHTML = list.map(c => `<div class="card link" data-open="chat/${c.user.id}"><h3>${esc(c.user.name)} ${c.unread ? `<span class="badge">${c.unread}</span>` : ''}</h3><p class="${c.unread ? '' : 'muted'}">${esc(c.last_text)}</p><p class="muted small">${fmtTime(c.last_at)}</p></div>`).join('')
+    || '<p class="empty">Переписок пока нет. Откройте объявление или профиль и нажмите «Написать».</p>';
+  updateBadge();
+}
+let chatRefresh = null;
+async function renderChat(id, seq) {
+  if (!S.me) { setDetail(seq, loginHint('Войдите, чтобы читать и писать сообщения.')); return; }
+  if (S.me.id === id) { navigate('inbox'); return; }
+  const first = await req(`/messages/with/${id}/`);
+  const bubbles = t => t.messages.map(m => `<div class="bub ${m.mine ? 'mine' : ''}">${m.ad ? `<button class="btn" type="button" data-open="ad/${m.ad}">Объявление №${m.ad}</button><br>` : ''}${esc(m.text)}<small>${fmtTime(m.created_at)}${m.mine ? (m.read_at ? ' · прочитано' : '') : ''}</small></div>`).join('') || '<p class="empty">Сообщений пока нет. Напишите первым.</p>';
+  if (!setDetail(seq, `${backBtn('inbox', 'К сообщениям')}
+    <div class="card"><h3>${esc(first.user.name)}</h3><button class="btn" type="button" data-open="user/${first.user.id}">Профиль</button>
+      <div class="chat" id="chatLog" aria-live="polite">${bubbles(first)}</div>
+      <textarea id="chatText" rows="2" maxlength="2000" placeholder="Сообщение (Ctrl+Enter — отправить)" aria-label="Сообщение"></textarea>
+      <button class="btn primary" type="button" id="chatSend" data-to="${first.user.id}">Отправить</button></div>`)) return;
+  const log = () => $('chatLog');
+  log().scrollTop = log().scrollHeight;
+  chatRefresh = async () => {
+    if (seq !== routeSeq || !log()) return;
+    const t = await req(`/messages/with/${id}/`);
+    if (seq !== routeSeq || !log()) return;
+    const el = log(), atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    const html = bubbles(t);
+    if (el.innerHTML !== html) { el.innerHTML = html; if (atEnd) el.scrollTop = el.scrollHeight; }
+    updateBadge();
+  };
+  chatTimer = setInterval(() => { if (!document.hidden) chatRefresh().catch(() => {}); }, 10000);
+  updateBadge();
+}
+
+// ---------- действия на страницах подробностей ----------
+$('detailBody').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.target.id === 'chatText') { e.preventDefault(); $('chatSend').click(); }
+});
+$('detailBody').addEventListener('click', safe(async e => {
+  const t = e.target.closest('button'); if (!t) return;
+  if (t.id === 'msgSend' || t.id === 'chatSend') {
+    const box = $(t.id === 'msgSend' ? 'msgText' : 'chatText'), text = box.value.trim();
+    if (!text) return toast('Введите текст сообщения.', 'warn');
+    t.disabled = true;
+    try {
+      await sendMessage(Number(t.dataset.to), text, t.dataset.ad ? Number(t.dataset.ad) : null);
+      box.value = '';
+      if (t.id === 'chatSend') { await chatRefresh(); const l = $('chatLog'); if (l) l.scrollTop = l.scrollHeight; }
+      else { toast('Сообщение отправлено.', 'success'); $('msgSent').innerHTML = `<button class="btn" type="button" data-open="chat/${t.dataset.to}">Открыть переписку</button>`; }
+    } finally { t.disabled = false; }
+  } else if (t.id === 'postSend') {
+    const text = $('postText').value.trim();
+    if (!text) return toast('Введите текст сообщения.', 'warn');
+    t.disabled = true;
+    try {
+      await req('/forum/posts/', { method: 'POST', body: { topic: Number(t.dataset.topic), text } });
+      toast('Сообщение опубликовано.', 'success'); route(true);
+    } finally { t.disabled = false; }
+  } else if (t.id === 'applyBtn') {
+    const body = { message: $('applyText').value.trim() };
+    body[t.dataset.kind] = Number(t.dataset.id);
+    t.disabled = true;
+    try { await req('/applications/', { method: 'POST', body }); toast('Заявка отправлена.', 'success'); $('applyText').value = ''; }
+    finally { t.disabled = false; }
+  } else if (t.dataset.svc) {
+    if (!await askConfirm(`Отправить заявку на услугу «${t.dataset.title}»?`, 'Отправить')) return;
+    await req('/applications/', { method: 'POST', body: { provider_service: Number(t.dataset.svc) } });
+    toast('Заявка отправлена.', 'success');
+  }
+}));
+
 // ---------- старт ----------
 (async function init() {
   await loadMe();
-  show((location.hash || '#home').slice(1));
+  route();
+  setInterval(() => { if (S.me && !document.hidden) updateBadge(); }, 30000);
 })();
 </script>
 {% endverbatim %}
