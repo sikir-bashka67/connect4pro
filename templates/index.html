@@ -61,6 +61,11 @@ td,th{text-align:left;padding:8px 6px;border-bottom:1px solid #e6eaf2}
 .bub.mine{background:var(--brand);color:#fff;align-self:flex-end}
 .bub small{display:block;opacity:.75;font-size:11px;margin-top:3px}
 .kv{margin:6px 0}.kv b{color:var(--muted);font-weight:normal;font-size:13px;display:block}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0 12px}
+.notice{background:#fff8e6;border:1px solid #f1d58a;border-radius:8px;padding:8px 10px;color:#6b4a06;margin:0 0 10px}
+label.check{display:flex;gap:8px;align-items:flex-start;color:var(--ink);font-size:14px}
+label.check input{width:auto;margin:3px 0 0}
+details.hints{margin:0 0 12px}details.hints summary{cursor:pointer;color:var(--brand)}details.hints li{cursor:pointer;margin:4px 0}
 @media(max-width:600px){
   #toasts{top:auto;bottom:14px;right:14px}
 }
@@ -133,24 +138,28 @@ td,th{text-align:left;padding:8px 6px;border-bottom:1px solid #e6eaf2}
         <input id="loginUser" placeholder="Логин" autocomplete="username" aria-label="Логин">
         <input id="loginPass" type="password" placeholder="Пароль" autocomplete="current-password" aria-label="Пароль">
         <button class="btn primary" type="submit">Войти</button></form>
-      <form class="card" id="regForm"><h3>Регистрация</h3>
-        <input id="regUser" placeholder="Логин" autocomplete="username" aria-label="Логин">
-        <input id="regEmail" type="email" placeholder="Почта" autocomplete="email" aria-label="Почта">
-        <input id="regPass" type="password" placeholder="Пароль (от 8 символов)" autocomplete="new-password" aria-label="Пароль">
-        <select id="regRole" aria-label="Роль"><option value="client">Клиент (МСБ)</option><option value="provider">Провайдер услуг</option></select>
+      <form class="card" id="regForm" style="grid-column:1/-1"><h3>Регистрация</h3><div id="regFields"></div>
         <button class="btn primary" type="submit">Создать аккаунт</button></form>
     </div>
   </div>
 
   <div id="userBox" class="hidden">
     <div class="card" id="profileCard"></div>
+    <form class="card hidden" id="profileForm"><h3>Редактировать профиль</h3><div id="profileFields"></div>
+      <button class="btn primary" type="submit">Сохранить</button><button class="btn" type="button" id="profileCancel">Отмена</button></form>
     <div class="card" id="quotaCard"></div>
     <div class="card hidden" id="adFormCard"><h3>Новое объявление</h3>
-      <label for="adTitle">Заголовок</label><input id="adTitle">
-      <label for="adDesc">Описание</label><textarea id="adDesc" rows="3"></textarea>
-      <div class="row"><div><label for="adPrice">Цена / бюджет</label><input id="adPrice" type="number" min="0" step="any"></div>
-      <div><label for="adKind">Тип</label><select id="adKind"><option value="request">Запрос услуги</option><option value="sell_share">Продаю долю</option><option value="buy_share">Куплю долю</option></select></div></div>
-      <button class="btn primary" id="adCreateBtn">Разместить</button></div>
+      <div class="cols"><div><label for="adKind">Тип</label><select id="adKind"><option value="request">Запрос услуги</option><option value="sell_share">Продаю долю</option><option value="buy_share">Куплю долю</option></select></div>
+      <div><label for="adCat">Категория</label><select id="adCat"><option value="">— без категории —</option></select></div></div>
+      <label for="adTitle">Заголовок запроса</label><input id="adTitle" maxlength="255">
+      <label for="adDesc">Описание запроса (письмо, проект, бизнес-план, поиск инвестора…)</label><textarea id="adDesc" rows="3"></textarea>
+      <div class="cols"><div><label for="adPrice">Бюджет / цена</label><input id="adPrice" type="number" min="0" step="any"></div>
+      <div><label for="adCurrency">Валюта</label><select id="adCurrency"><option value="KGS">Сом</option><option value="USD">Доллар</option></select></div></div>
+      <details class="hints"><summary>Рекомендуемая цена на услуги</summary><ul id="priceHints" class="small"></ul></details>
+      <label for="adOffer">Я предлагаю (необязательно)</label><textarea id="adOffer" rows="2" placeholder="Мои знания и навыки: другие смогут предложить сотрудничество"></textarea>
+      <label for="adTags">Теги через запятую (необязательно)</label><input id="adTags" placeholder="бизнес-план, грант, IT">
+      <label for="adPhotos">Фото (до 5 шт., до 5 МБ каждое)</label><input id="adPhotos" type="file" accept="image/*" multiple>
+      <button class="btn primary" id="adCreateBtn" type="button">Разместить</button></div>
     <div class="card hidden" id="myAdsCard"><h3>Мои объявления</h3><div id="myAds"></div></div>
     <div class="card"><h3>Мои платежи</h3><div id="myPayments"></div></div>
   </div>
@@ -177,7 +186,11 @@ const LABEL = {
   topic: { grants: 'Гранты', investments: 'Инвестиции', business_sale: 'Купля-продажа бизнеса', legal: 'Юридические вопросы', general: 'Общие вопросы' },
   purpose: { premium: 'Подписка Premium', calculator: 'Калькулятор', pack_project: 'Пакет 50 проектов', pack_business_plan: 'Пакет 50 бизнес-планов' },
   pay: { pending: 'Ожидает оплаты', paid: 'Оплачено', failed: 'Ошибка', refunded: 'Возврат' },
-  field: { username: 'Логин', email: 'Почта', password: 'Пароль', title: 'Заголовок', description: 'Описание', price: 'Цена', listing_type: 'Тип', purpose: 'Назначение' },
+  field: { username: 'Логин', email: 'Почта', password: 'Пароль', title: 'Заголовок', description: 'Описание', price: 'Цена', listing_type: 'Тип', purpose: 'Назначение',
+    first_name: 'Имя', last_name: 'Фамилия', birth_year: 'Год рождения', company_name: 'Организация', phone: 'Телефон',
+    website_or_social: 'Сайт или соцсети', region: 'Регион', business_sector: 'Сектор', employees_count: 'Число сотрудников',
+    annual_turnover: 'Оборот', what_i_offer: 'Я предлагаю', what_i_seek: 'Я ищу', consent_public_offer: 'Согласие',
+    currency: 'Валюта', category: 'Категория', tags: 'Теги', image: 'Фото', role: 'Роль' },
 };
 const PACK = { project: 'pack_project', business_plan: 'pack_business_plan' };
 
@@ -186,7 +199,8 @@ function esc(v) {
   return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 const fmtDate = s => s ? new Date(s).toLocaleDateString('ru-RU') : '—';
-const fmtMoney = (a, c) => `${Number(a).toLocaleString('ru-RU')} ${c === 'KGS' || !c ? 'сом' : c}`;
+const fmtMoney = (a, c) => `${Number(a).toLocaleString('ru-RU')} ${c === 'USD' ? '$' : (c === 'KGS' || !c ? 'сом' : c)}`;
+const tagPills = t => t ? String(t).split(',').filter(Boolean).map(x => `<span class="pill">#${esc(x)}</span>`).join('') : '';
 const rows = d => (d && d.results) ? d.results : (Array.isArray(d) ? d : []);
 const clip = (v, n) => { v = String(v == null ? '' : v); return v.length > n ? v.slice(0, n).trimEnd() + '…' : v; };
 const fmtTime = s => s ? new Date(s).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
@@ -250,10 +264,11 @@ function refreshToken() {
 }
 async function req(path, { method = 'GET', body, retry = true } = {}) {
   const headers = {};
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
+  if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
   if (S.access) headers.Authorization = 'Bearer ' + S.access;
   let r;
-  try { r = await fetch(API + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined }); }
+  try { r = await fetch(API + path, { method, headers, body: body !== undefined ? (isForm ? body : JSON.stringify(body)) : undefined }); }
   catch (e) { throw new ApiError(0, { detail: 'Нет связи с сервером. Проверьте интернет.' }); }
   // просроченный токен ломает даже публичные страницы: пробуем обновить, иначе выходим
   if (r.status === 401 && S.access && retry) {
@@ -345,14 +360,60 @@ $('loginForm').onsubmit = safe(async e => {
   toast(`Добро пожаловать, ${S.me ? S.me.username : ''}!`, 'success');
   loadAccount();
 });
+// ---------- профиль и регистрация: общие поля ----------
+const TURNOVER = [['up_to_100k', 'до 100 000'], ['up_to_500k', 'до 500 000'], ['up_to_1m', 'до 1 млн'], ['up_to_5m', 'до 5 млн'], ['up_to_10m', 'до 10 млн'], ['over_10m', 'более 10 млн']];
+function profileFields(p, v = {}, reg = false) {
+  const inp = (name, label, attrs = '') => `<div><label for="${p}_${name}">${label}</label><input id="${p}_${name}" value="${esc(v[name] == null ? '' : v[name])}" ${attrs}></div>`;
+  const area = (name, label, ph) => `<label for="${p}_${name}">${label}</label><textarea id="${p}_${name}" rows="3" placeholder="${esc(ph)}">${esc(v[name] || '')}</textarea>`;
+  const turn = `<div><label for="${p}_annual_turnover">Оборот за прошлый год</label><select id="${p}_annual_turnover"><option value="">— не указан —</option>${TURNOVER.map(([k, t]) => `<option value="${k}"${v.annual_turnover === k ? ' selected' : ''}>${t}</option>`).join('')}</select></div>`;
+  const account = reg ? `<label for="${p}_role">Кто вы</label><select id="${p}_role"><option value="client">Клиент (МСБ): ищу услуги и возможности</option><option value="provider">Провайдер: предлагаю услуги</option></select>
+    <div class="cols">${inp('username', 'Логин *', 'autocomplete="username"')}${inp('email', 'Почта *', 'type="email" autocomplete="email"')}</div>
+    <label for="${p}_password">Пароль (от 8 символов) *</label><input id="${p}_password" type="password" autocomplete="new-password">` : '';
+  return `${account}
+  <div class="cols">${inp('first_name', 'Имя')}${inp('last_name', 'Фамилия')}${inp('birth_year', 'Год рождения', 'type="number" min="1900" max="2100"')}</div>
+  <div class="cols">${inp('company_name', 'Название организации')}${inp('phone', 'Телефон / Telegram')}${inp('website_or_social', 'Сайт или соцсети', 'type="url" placeholder="https://"')}</div>
+  <div class="cols">${inp('region', 'Регион')}${inp('business_sector', 'Сектор бизнеса')}</div>
+  <div class="clientOnly"><div class="cols">${inp('employees_count', 'Число сотрудников', 'type="number" min="0"')}${turn}</div>
+  ${area('what_i_offer', 'Я предлагаю', 'Мои знания, навыки, технологии: чтобы другие могли предложить сотрудничество')}
+  ${area('what_i_seek', 'Я ищу (необязательно)', 'Партнёры, инвесторы, продажа доли или бизнеса, консультации, новые рынки')}
+  <p class="notice small">⚠️ Поле «Я предлагаю» увидят другие клиенты и консультанты. Если вы заполните «Я ищу», ваша карточка попадёт в базу МСБ (её видят подписчики Premium).</p>
+  <label class="check"><input type="checkbox" id="${p}_consent"${v.consent_public_offer ? ' checked' : ''}> Согласен на публикацию этих полей в базе МСБ</label></div>`;
+}
+function readProfile(p, withClient) {
+  const g = n => { const el = $(`${p}_${n}`); return el ? el.value.trim() : ''; };
+  const num = n => { const x = g(n); return x === '' ? null : Number(x); };
+  const d = { first_name: g('first_name'), last_name: g('last_name'), birth_year: num('birth_year'), company_name: g('company_name'),
+    phone: g('phone'), website_or_social: g('website_or_social'), region: g('region'), business_sector: g('business_sector') };
+  if (withClient) Object.assign(d, { employees_count: num('employees_count'), annual_turnover: g('annual_turnover'),
+    what_i_offer: g('what_i_offer'), what_i_seek: g('what_i_seek'), consent_public_offer: $(`${p}_consent`).checked });
+  return d;
+}
+const toggleClientFields = (box, on) => box.querySelector('.clientOnly').classList.toggle('hidden', !on);
+$('regFields').innerHTML = profileFields('reg', {}, true);
+$('reg_role').onchange = () => toggleClientFields($('regFields'), $('reg_role').value === 'client');
 $('regForm').onsubmit = safe(async e => {
   e.preventDefault();
-  const u = $('regUser').value.trim(), p = $('regPass').value;
-  await req('/register/', { method: 'POST', body: { username: u, email: $('regEmail').value.trim(), password: p, role: $('regRole').value } });
-  await doLogin(u, p);
-  $('regPass').value = '';
+  const role = $('reg_role').value, u = $('reg_username').value.trim(), email = $('reg_email').value.trim(), pw = $('reg_password').value;
+  if (!u || !email || !pw) return toast('Заполните логин, почту и пароль.', 'warn');
+  const body = Object.assign(readProfile('reg', role === 'client'), { username: u, email, password: pw, role });
+  await req('/register/', { method: 'POST', body });
+  await doLogin(u, pw);
+  $('reg_password').value = '';
   toast('Аккаунт создан, вы вошли в систему.', 'success');
   loadAccount();
+});
+function openProfileForm() {
+  const m = S.me;
+  $('profileFields').innerHTML = profileFields('pf', m, false);
+  toggleClientFields($('profileFields'), m.role !== 'provider');
+  $('profileCard').classList.add('hidden'); $('profileForm').classList.remove('hidden');
+}
+$('profileCancel').onclick = () => { $('profileForm').classList.add('hidden'); $('profileCard').classList.remove('hidden'); };
+$('profileForm').onsubmit = safe(async e => {
+  e.preventDefault();
+  await req('/me/', { method: 'PATCH', body: readProfile('pf', S.me.role !== 'provider') });
+  toast('Профиль сохранён.', 'success');
+  await loadAccount();
 });
 
 // ---------- платежи ----------
@@ -390,7 +451,7 @@ async function loadHome() {
 async function loadAds() {
   const t = $('adsType').value;
   const d = await req('/ads/' + (t ? '?listing_type=' + encodeURIComponent(t) : ''));
-  $('adsList').innerHTML = rows(d).map(x => `<div class="card link" data-open="ad/${x.id}"><span class="pill ${x.listing_type !== 'request' ? 'ok' : ''}">${esc(LABEL.kind[x.listing_type] || 'Запрос')}</span><h3>${esc(x.title)}</h3><p>${esc(clip(x.description, 160))}</p><b>${fmtMoney(x.price)}</b><p class="muted small">${esc(x.author_name)} · ${fmtDate(x.created_at)}</p><button class="btn" data-open="ad/${x.id}">Подробнее</button></div>`).join('') || '<p class="empty">Пока нет объявлений.</p>';
+  $('adsList').innerHTML = rows(d).map(x => `<div class="card link" data-open="ad/${x.id}"><span class="pill ${x.listing_type !== 'request' ? 'ok' : ''}">${esc(LABEL.kind[x.listing_type] || 'Запрос')}</span><h3>${esc(x.title)}</h3><p>${esc(clip(x.description, 160))}</p><b>${fmtMoney(x.price, x.currency)}</b><p class="muted small">${esc(x.author_name)} · ${fmtDate(x.created_at)}</p><button class="btn" data-open="ad/${x.id}">Подробнее</button></div>`).join('') || '<p class="empty">Пока нет объявлений.</p>';
 }
 $('adsType').onchange = safe(loadAds);
 
@@ -502,20 +563,23 @@ async function loadAccount() {
   $('guestBox').classList.toggle('hidden', !!m);
   $('userBox').classList.toggle('hidden', !m);
   if (!m) return;
+  $('profileForm').classList.add('hidden'); $('profileCard').classList.remove('hidden');
 
   const until = m.is_premium && m.role !== 'admin' ? (m.premium_until ? `до ${fmtDate(m.premium_until)}` : 'бессрочно') : '';
   $('profileCard').innerHTML = `<h3>${esc(m.username)}</h3><p>${esc(m.first_name || '')} ${esc(m.last_name || '')} ${m.email ? '· ' + esc(m.email) : ''}</p>
     <p><span class="pill">${esc(LABEL.role[m.role] || m.role)}</span>${m.is_premium ? `<span class="pill prem">Premium ${until}</span>` : '<span class="pill">Freemium</span>'}</p>
     ${m.role === 'admin' ? '' : `<button class="btn primary" id="buyPremium">${m.is_premium ? 'Продлить Premium' : 'Оформить Premium'} · ${priceOf('premium')}</button>`}
+    <button class="btn" id="editProfile">Редактировать профиль</button>
     <button class="btn" id="logoutBtn">Выйти</button>`;
   $('logoutBtn').onclick = () => logout('Вы вышли из аккаунта.', 'info');
+  $('editProfile').onclick = openProfileForm;
   const bp = $('buyPremium'); if (bp) bp.onclick = safe(async () => { if (await buy('premium', 'Подписка Premium')) loadAccount(); });
 
   await renderQuota();
   const isClient = m.role === 'client' || m.role === 'admin';
   $('adFormCard').classList.toggle('hidden', !isClient);
   $('myAdsCard').classList.toggle('hidden', !isClient);
-  if (isClient) await renderMyAds();
+  if (isClient) { await loadAdFormData(); await renderMyAds(); }
   await renderPayments();
 }
 async function renderQuota() {
@@ -542,12 +606,12 @@ async function renderMyAds() {
   const d = await req('/ads/?author=' + S.me.id);
   const list = rows(d);
   $('myAds').innerHTML = list.map(x => `<div class="card" style="box-shadow:none;border:1px solid #e6eaf2;margin-bottom:10px">
-    <span class="pill">${esc(LABEL.kind[x.listing_type] || 'Запрос')}</span>${x.is_completed ? '<span class="pill ok">Сделка завершена</span>' : ''}${x.auto_bump ? '<span class="pill prem">Автоподнятие</span>' : ''}
-    <h3>${esc(x.title)}</h3><p class="muted small">${fmtMoney(x.price)} · ${fmtDate(x.created_at)}</p>
+    <span class="pill">${esc(LABEL.kind[x.listing_type] || 'Запрос')}</span>${x.is_completed ? `<span class="pill ok">Сделка завершена · удалим ${fmtDate(new Date(new Date(x.completion_requested_at).getTime() + 3 * 864e5))}</span>` : ''}${x.auto_bump ? '<span class="pill prem">Автоподнятие</span>' : ''}
+    <h3>${esc(x.title)}</h3><p class="muted small">${fmtMoney(x.price, x.currency)} · ${fmtDate(x.created_at)}</p>
     <button class="btn" data-open="ad/${x.id}">Открыть</button>
     <button class="btn" data-bump="${x.id}">Поднять</button>
     <button class="btn" data-auto="${x.id}" data-on="${x.auto_bump ? 0 : 1}">${x.auto_bump ? 'Выключить автоподнятие' : 'Включить автоподнятие'}</button>
-    ${x.is_completed ? '' : `<button class="btn" data-done="${x.id}">Сделка завершена</button>`}
+    ${x.is_completed ? `<button class="btn" data-keep="${x.id}">Вернуть объявление</button>` : `<button class="btn" data-done="${x.id}">Сделка завершена: да</button><button class="btn" data-keep="${x.id}">Оставить объявление</button>`}
   </div>`).join('') || '<p class="empty">У вас пока нет объявлений.</p>';
 }
 $('myAds').addEventListener('click', safe(async e => {
@@ -559,6 +623,7 @@ $('myAds').addEventListener('click', safe(async e => {
   try {
     if (t.dataset.bump) { await req(`/ads/${t.dataset.bump}/bump/`, { method: 'POST' }); toast('Объявление поднято.', 'success'); }
     else if (t.dataset.auto) { const on = t.dataset.on === '1'; await req(`/ads/${t.dataset.auto}/auto-bump/`, { method: 'POST', body: { enabled: on } }); toast(on ? 'Автоподнятие включено.' : 'Автоподнятие выключено.', 'success'); }
+    else if (t.dataset.keep) { await req(`/ads/${t.dataset.keep}/keep/`, { method: 'POST' }); toast('Объявление оставлено. Напомним об актуальности через 2 недели.', 'success'); }
     else if (t.dataset.done) {
       if (!await askConfirm('Отметить сделку завершённой? Объявление будет удалено через 3 дня.', 'Завершить')) return;
       await req(`/ads/${t.dataset.done}/complete/`, { method: 'POST', body: { keep_listing: false } }); toast('Сделка отмечена завершённой.', 'success');
@@ -566,12 +631,36 @@ $('myAds').addEventListener('click', safe(async e => {
     renderMyAds();
   } catch (err) { premiumHint(err); }
 }));
+async function loadAdFormData() {
+  if (!S.cats) { try { S.cats = rows(await req('/categories/')); } catch (e) { S.cats = []; } }
+  if (!S.hints) { try { S.hints = await req('/price-hints/'); } catch (e) { S.hints = []; } }
+  const cur = $('adCat').value;
+  $('adCat').innerHTML = '<option value="">— без категории —</option>' + S.cats.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  $('adCat').value = cur;
+  $('priceHints').innerHTML = S.hints.map(h => `<li data-hint="${esc(h.title)}">${esc(h.title)}: <b>${esc(h.price)}</b></li>`).join('');
+}
+$('priceHints').onclick = e => { const li = e.target.closest('li'); if (li && !$('adTitle').value) $('adTitle').value = li.dataset.hint; };
 $('adCreateBtn').onclick = safe(async () => {
   const title = $('adTitle').value.trim(), description = $('adDesc').value.trim(), price = $('adPrice').value;
   if (!title || !description || price === '') return toast('Заполните заголовок, описание и цену.', 'warn');
-  await req('/ads/', { method: 'POST', body: { title, description, price, listing_type: $('adKind').value } });
-  $('adTitle').value = $('adDesc').value = $('adPrice').value = '';
-  toast('Объявление размещено.', 'success'); renderMyAds();
+  const files = [...$('adPhotos').files];
+  if (files.length > 5) return toast('Можно загрузить не больше 5 фото.', 'warn');
+  if (files.some(f => f.size > 5 * 1024 * 1024)) return toast('Каждое фото должно быть не больше 5 МБ.', 'warn');
+  const body = { title, description, price, currency: $('adCurrency').value, listing_type: $('adKind').value, tags: $('adTags').value.trim() };
+  if ($('adCat').value) body.category = Number($('adCat').value);
+  if ($('adOffer').value.trim()) body.what_i_offer_optional = $('adOffer').value.trim();
+  const btn = $('adCreateBtn'); btn.disabled = true;
+  try {
+    const ad = await req('/ads/', { method: 'POST', body });
+    let failed = 0;
+    for (const f of files) {
+      const fd = new FormData(); fd.append('ad', ad.id); fd.append('image', f);
+      try { await req('/ad-photos/', { method: 'POST', body: fd }); } catch (e) { failed++; }
+    }
+    ['adTitle', 'adDesc', 'adPrice', 'adOffer', 'adTags', 'adPhotos'].forEach(id => { $(id).value = ''; });
+    toast(failed ? `Объявление размещено, но ${failed} фото не загрузилось.` : 'Объявление размещено.', failed ? 'warn' : 'success');
+    renderMyAds();
+  } finally { btn.disabled = false; }
 });
 async function renderPayments() {
   const list = rows(await req('/payments/'));
@@ -629,7 +718,8 @@ async function renderAd(id, seq) {
   setDetail(seq, `${backBtn('ads', 'К объявлениям')}
     <div class="card"><span class="pill ${x.listing_type !== 'request' ? 'ok' : ''}">${esc(LABEL.kind[x.listing_type] || 'Запрос')}</span>${x.is_completed ? '<span class="pill ok">Сделка завершена</span>' : ''}
       <h2>${esc(x.title)}</h2>
-      <p><b>${fmtMoney(x.price)}</b></p>
+      <p><b>${fmtMoney(x.price, x.currency)}</b></p>
+      ${x.tags ? `<p>${tagPills(x.tags)}</p>` : ''}
       <div class="content">${esc(x.description)}</div>
       ${x.what_i_offer_optional ? `<div class="kv"><b>Автор предлагает</b>${esc(x.what_i_offer_optional)}</div>` : ''}
       ${photos ? `<div class="photos">${photos}</div>` : ''}
@@ -683,7 +773,7 @@ async function renderProvider(id, seq) {
     ? `<div class="kv"><b>Контакты</b>${x.manager_name ? esc(x.manager_name) + '<br>' : ''}${x.phone ? esc(x.phone) + '<br>' : ''}${x.email ? esc(x.email) + '<br>' : ''}${x.address ? esc(x.address) : ''}</div>`
     : '<p class="muted small">Контакты видны подписчикам Premium. Написать провайдеру можно и здесь, через сообщения.</p>';
   const canApply = !!S.me && S.me.role === 'client';
-  const services = svc.map(v => `<div class="post"><b>${esc(v.title)}</b> · от ${fmtMoney(v.price)}<div class="content">${esc(v.description)}</div>
+  const services = svc.map(v => `<div class="post"><b>${esc(v.title)}</b> · от ${fmtMoney(v.price, v.currency)}<div class="content">${esc(v.description)}</div>
     ${canApply ? `<button class="btn" type="button" data-svc="${v.id}" data-title="${esc(v.title)}">Оставить заявку</button>` : ''}</div>`).join('') || '<p class="empty">Услуг пока нет.</p>';
   setDetail(seq, `${backBtn('providers', 'К провайдерам')}
     <div class="card">${x.logo ? imgTag(x.logo).replace('<img ', '<img class="logo" ') : ''}<h2>${esc(x.company_name)}</h2>
@@ -714,7 +804,7 @@ async function renderUser(id, seq) {
       ${fields}${hidden}
       ${u.provider_profile_id ? `<button class="btn" type="button" data-open="provider/${u.provider_profile_id}">Страница провайдера</button>` : ''}
       ${u.is_me ? '<button class="btn" type="button" data-go="account">Мой аккаунт</button>' : ''}</div>
-    ${ads.length ? `<div class="card"><h3>Объявления</h3>${ads.map(a => `<div class="post"><span class="pill">${esc(LABEL.kind[a.listing_type] || 'Запрос')}</span> <button class="btn" type="button" data-open="ad/${a.id}">${esc(a.title)}</button> <b>${fmtMoney(a.price)}</b></div>`).join('')}</div>` : ''}
+    ${ads.length ? `<div class="card"><h3>Объявления</h3>${ads.map(a => `<div class="post"><span class="pill">${esc(LABEL.kind[a.listing_type] || 'Запрос')}</span> <button class="btn" type="button" data-open="ad/${a.id}">${esc(a.title)}</button> <b>${fmtMoney(a.price, a.currency)}</b></div>`).join('')}</div>` : ''}
     ${composeBox(u.id)}`);
 }
 

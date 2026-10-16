@@ -25,12 +25,24 @@ from . import payments, services
 from .exceptions import PaymentRequired
 
 
-class AdViewSet(viewsets.ModelViewSet):
+class TagFilterMixin:
+    """?tag=it — точное совпадение с одним из тегов (теги хранятся как 'a,b,c')."""
+
+    def filter_queryset(self, queryset):
+        qs = super().filter_queryset(queryset)
+        tag = (self.request.query_params.get('tag') or '').strip().lstrip('#').strip().lower()
+        if tag:
+            qs = qs.filter(Q(tags=tag) | Q(tags__startswith=tag + ',') | Q(tags__contains=',' + tag + ',')
+                           | Q(tags__endswith=',' + tag))
+        return qs
+
+
+class AdViewSet(TagFilterMixin, viewsets.ModelViewSet):
     serializer_class = AdSerializer
     permission_classes = [IsOwnerOrAdmin]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['category', 'author', 'is_completed', 'auto_bump', 'listing_type']
-    search_fields = ['title', 'description', 'what_i_offer_optional']
+    search_fields = ['title', 'description', 'what_i_offer_optional', 'tags']
     ordering_fields = ['price', 'created_at', 'last_bumped_at', 'sort_at']
     # по умолчанию: сначала объявления Premium о купле-продаже доли, затем по свежести/поднятию
     ordering = ['-priority', '-sort_at', '-id']
@@ -75,6 +87,19 @@ class AdViewSet(viewsets.ModelViewSet):
         ad.keep_listing = bool(request.data.get('keep_listing', False))
         ad.completion_requested_at = timezone.now()
         ad.save(update_fields=['is_completed', 'keep_listing', 'completion_requested_at'])
+        return Response(AdSerializer(ad, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def keep(self, request, pk=None):
+        """«Оставить объявление»: подтвердить актуальность (сбрасывает напоминание) или вернуть завершённое."""
+        ad = self.get_object()
+        if ad.author != request.user and request.user.role != 'admin':
+            raise PermissionDenied('Изменять можно только своё объявление.')
+        ad.is_completed = False
+        ad.keep_listing = True
+        ad.completion_requested_at = None
+        ad.last_reminder_at = timezone.now()
+        ad.save(update_fields=['is_completed', 'keep_listing', 'completion_requested_at', 'last_reminder_at'])
         return Response(AdSerializer(ad, context={'request': request}).data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
@@ -154,13 +179,13 @@ class CategoryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminOrReadOnly]
 
 
-class ProviderServiceViewSet(viewsets.ModelViewSet):
+class ProviderServiceViewSet(TagFilterMixin, viewsets.ModelViewSet):
     queryset = ProviderService.objects.all().select_related('provider', 'category').prefetch_related('photos')
     serializer_class = ProviderServiceSerializer
     permission_classes = [IsProviderOwnerOrAdmin]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['category', 'provider']
-    search_fields = ['title', 'description']
+    search_fields = ['title', 'description', 'tags']
     ordering_fields = ['price', 'created_at']
     def perform_create(self, serializer):
         if self.request.user.role not in ('provider', 'admin'):
@@ -187,23 +212,23 @@ class ProviderServicePhotoViewSet(viewsets.ModelViewSet):
         instance.delete()
 
 
-class FinancingViewSet(viewsets.ModelViewSet):
+class FinancingViewSet(TagFilterMixin, viewsets.ModelViewSet):
     queryset = Financing.objects.all().select_related('category')
     serializer_class = FinancingSerializer
     permission_classes = [IsAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['financing_type', 'sector']
-    search_fields = ['title', 'description', 'sector']
+    search_fields = ['title', 'description', 'sector', 'tags']
     ordering_fields = ['deadline', 'created_at']
 
 
-class EventViewSet(viewsets.ModelViewSet):
+class EventViewSet(TagFilterMixin, viewsets.ModelViewSet):
     queryset = Event.objects.all().select_related('category')
     serializer_class = EventSerializer
     permission_classes = [IsAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['event_type', 'sector', 'format']
-    search_fields = ['title', 'description', 'sector']
+    search_fields = ['title', 'description', 'sector', 'tags']
     ordering_fields = ['date_and_time']
 
 
@@ -507,13 +532,25 @@ class ClientDirectoryView(generics.ListAPIView):
     search_fields = ['what_i_offer', 'business_sector']
 
     def get_queryset(self):
-        # в базе только клиенты, которые заполнили «я предлагаю» и дали согласие на публикацию
+        # в базе только клиенты, давшие согласие на публикацию. Не-Premium видят тех, кто заполнил
+        # «я предлагаю»; Premium — ещё и тех, кто отметил «я ищу» (ТЗ: «если отмечает, появляется в БД МСБ»)
+        has_offer = Q(what_i_offer__isnull=False) & ~Q(what_i_offer='')
+        has_seek = Q(what_i_seek__isnull=False) & ~Q(what_i_seek='')
+        visible = (has_offer | has_seek) if viewer_is_premium(self.request) else has_offer
         return (User.objects.filter(role='client', consent_public_offer=True, is_active=True)
-                .exclude(what_i_offer__isnull=True).exclude(what_i_offer='').order_by('-date_joined'))
+                .filter(visible).order_by('-date_joined'))
 
 
 # старый адрес оставлен для совместимости
 PremiumClientDirectoryView = ClientDirectoryView
+
+
+class PriceHintsView(APIView):
+    """Рекомендуемые цены на услуги из ТЗ — подсказки в форме объявления."""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response(services.PRICE_HINTS)
 
 
 class PlatformAnalyticsView(APIView):

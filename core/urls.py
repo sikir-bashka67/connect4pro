@@ -5,7 +5,7 @@ from .views import (
     ProviderServicePhotoViewSet, FinancingViewSet, EventViewSet, DatabaseResourceViewSet,
     GrantProbabilityCalculatorView, PlatformAnalyticsView, TrackAnalyticsView, ApplicationViewSet,
     ForumTopicViewSet, ForumPostViewSet, NotificationSubscriptionViewSet, PaymentTransactionViewSet,
-    DealViewSet, MessageViewSet, PublicUserView, MeView, PremiumClientDirectoryView, ClientDirectoryView, PayboxWebhookView,
+    DealViewSet, MessageViewSet, PriceHintsView, PublicUserView, MeView, PremiumClientDirectoryView, ClientDirectoryView, PayboxWebhookView,
 )
 
 router = DefaultRouter()
@@ -24,6 +24,7 @@ urlpatterns = [
     path('', include(router.urls)), path('register/', RegisterView.as_view(), name='register'),
     path('me/', MeView.as_view(), name='me'), path('users/<int:pk>/', PublicUserView.as_view(), name='public-user'), path('clients/directory/', ClientDirectoryView.as_view(), name='clients-directory'), path('premium/clients/', PremiumClientDirectoryView.as_view(), name='premium-clients'),
     path('payments/webhook/paybox/', PayboxWebhookView.as_view(), name='paybox-webhook'),
+    path('price-hints/', PriceHintsView.as_view(), name='price-hints'),
     path('calculator/', GrantProbabilityCalculatorView.as_view(), name='grant-calculator'),
     path('analytics/', PlatformAnalyticsView.as_view(), name='platform-analytics'), path('analytics/track/', TrackAnalyticsView.as_view(), name='analytics-track'),
 ]

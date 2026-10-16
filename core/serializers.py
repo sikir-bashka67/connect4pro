@@ -1,3 +1,5 @@
+import re
+
 from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
 from rest_framework import serializers
@@ -9,9 +11,30 @@ from .models import (
 from . import services
 
 OFFER_WARNING = (
-    'Информация в поле «Я предлагаю» будет видна остальным клиентам и консультантам. '
+    'Поле «Я предлагаю» увидят остальные клиенты и консультанты, а карточка с «Я ищу» попадёт в базу МСБ. '
     'Подтвердите согласие (consent_public_offer=true).'
 )
+
+
+def normalize_tags(value):
+    """'IT, #Маркетинг ,it' -> 'it,маркетинг' (нижний регистр, без дублей, не больше 10 шт)."""
+    tags = []
+    for part in re.split(r'[,;\n]+', value or ''):
+        tag = re.sub(r'\s+', ' ', part.strip().lstrip('#').strip().lower())
+        if not tag:
+            continue
+        if len(tag) > 30:
+            raise serializers.ValidationError('Тег не длиннее 30 символов.')
+        if tag not in tags:
+            tags.append(tag)
+    if len(tags) > 10:
+        raise serializers.ValidationError('Не больше 10 тегов.')
+    return ','.join(tags)
+
+
+class TagsMixin:
+    def validate_tags(self, value):
+        return normalize_tags(value)
 
 
 def viewer_is_premium(request):
@@ -48,7 +71,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         validate_password(attrs['password'], User(username=attrs.get('username', ''), email=attrs.get('email', '')))
-        if attrs.get('what_i_offer') and not attrs.get('consent_public_offer'):
+        if (attrs.get('what_i_offer') or attrs.get('what_i_seek')) and not attrs.get('consent_public_offer'):
             raise serializers.ValidationError({'consent_public_offer': OFFER_WARNING})
         return attrs
 
@@ -72,8 +95,9 @@ class UserSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         offer = attrs.get('what_i_offer', self.instance.what_i_offer if self.instance else None)
+        seek = attrs.get('what_i_seek', self.instance.what_i_seek if self.instance else None)
         consent = attrs.get('consent_public_offer', self.instance.consent_public_offer if self.instance else False)
-        if offer and not consent:
+        if (offer or seek) and not consent:
             raise serializers.ValidationError({'consent_public_offer': OFFER_WARNING})
         return attrs
 
@@ -149,7 +173,7 @@ class AdPhotoSerializer(serializers.ModelSerializer):
         return ad
 
 
-class AdSerializer(serializers.ModelSerializer):
+class AdSerializer(TagsMixin, serializers.ModelSerializer):
     photos = AdPhotoSerializer(many=True, read_only=True)
     author_name = serializers.SerializerMethodField()
 
@@ -175,7 +199,7 @@ class ProviderServicePhotoSerializer(serializers.ModelSerializer):
         return service
 
 
-class ProviderServiceSerializer(serializers.ModelSerializer):
+class ProviderServiceSerializer(TagsMixin, serializers.ModelSerializer):
     photos = ProviderServicePhotoSerializer(many=True, read_only=True)
 
     class Meta:
@@ -192,13 +216,13 @@ class ProviderServiceSerializer(serializers.ModelSerializer):
         return data
 
 
-class FinancingSerializer(serializers.ModelSerializer):
+class FinancingSerializer(TagsMixin, serializers.ModelSerializer):
     class Meta:
         model = Financing
         fields = '__all__'
 
 
-class EventSerializer(serializers.ModelSerializer):
+class EventSerializer(TagsMixin, serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = '__all__'

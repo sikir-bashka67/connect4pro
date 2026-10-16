@@ -2,6 +2,12 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 
 
+CURRENCY_CHOICES = (
+    ('KGS', 'Сом'),
+    ('USD', 'Доллар'),
+)
+
+
 class User(AbstractUser):
     ROLE_CHOICES = (
         ('client', 'Клиент / МСБ'),
@@ -113,6 +119,8 @@ class Ad(models.Model):
     title = models.CharField(max_length=255, verbose_name='Заголовок запроса')
     description = models.TextField(verbose_name='Описание запроса')
     price = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='Бюджет / Цена (сом/доллары)')
+    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='KGS', verbose_name='Валюта')
+    tags = models.CharField(max_length=255, blank=True, default='', verbose_name='Теги (через запятую)')
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='ads', verbose_name='Категория')
     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ads', verbose_name='Автор (Клиент)')
     what_i_offer_optional = models.TextField(blank=True, null=True, verbose_name='Я предлагаю (опционально)')
@@ -133,6 +141,9 @@ class ProviderService(models.Model):
     title = models.CharField(max_length=255, verbose_name='Название услуги')
     description = models.TextField(verbose_name='Описание услуги')
     price = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='Цена от')
+    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='KGS', verbose_name='Валюта')
+    logo = models.ImageField(upload_to='service_logos/', blank=True, null=True, verbose_name='Логотип')
+    tags = models.CharField(max_length=255, blank=True, default='', verbose_name='Теги (через запятую)')
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='provider_services', verbose_name='Категория')
     phone = models.CharField(max_length=30, blank=True, null=True, verbose_name='Телефон')
     email = models.EmailField(blank=True, null=True, verbose_name='Почта')
@@ -154,6 +165,7 @@ class Financing(models.Model):
     deadline = models.DateField(blank=True, null=True, verbose_name='Дедлайн')
     description = models.TextField(verbose_name='Полное описание')
     sector = models.CharField(max_length=150, blank=True, null=True, verbose_name='Сектор (например, с/х, IT)')
+    tags = models.CharField(max_length=255, blank=True, default='', verbose_name='Теги (через запятую)')
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='financings', verbose_name='Категория')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата публикации')
 
@@ -175,6 +187,7 @@ class Event(models.Model):
     location = models.CharField(max_length=255, blank=True, null=True, verbose_name='Место / Ссылка')
     description = models.TextField(verbose_name='Описание')
     sector = models.CharField(max_length=150, blank=True, null=True, verbose_name='Целевой сектор')
+    tags = models.CharField(max_length=255, blank=True, default='', verbose_name='Теги (через запятую)')
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='events', verbose_name='Категория')
 
     def __str__(self):
