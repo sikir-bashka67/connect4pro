@@ -16,13 +16,20 @@ API: `http://127.0.0.1:8000/api/`
 Swagger: `http://127.0.0.1:8000/api/swagger/`
 ReDoc: `http://127.0.0.1:8000/api/redoc/`
 
-Для обработки напоминаний и удаления завершенных объявлений:
+После обновления кода (этап 2) примените миграции:
+
+```powershell
+python manage.py makemigrations core
+python manage.py migrate
+```
+
+Плановые задачи (автоподнятие объявлений Premium, напоминания, удаление завершённых объявлений):
 
 ```powershell
 python manage.py process_platform_jobs
 ```
 
-Команду можно запускать раз в день через планировщик Windows/Cron. В продакшене почтовую отправку следует заменить с console backend на SMTP.
+Запускайте **раз в час** через планировщик Windows / cron: автоподнятие срабатывает не чаще, чем раз в `AUTO_BUMP_INTERVAL_HOURS` (по умолчанию 24 ч). В продакшене почтовую отправку следует заменить с console backend на SMTP.
 
 ## Основные API-модули
 
@@ -43,6 +50,20 @@ python manage.py process_platform_jobs
 - аналитические события и расширенная админ-аналитика;
 - базовый веб-интерфейс.
 
-## Важно
+## Платежи, Premium и лимиты (этап 2)
 
-Реальные платежи Paybox требуют учетных данных/ключей самого Paybox. Пока проект работает без внешнего платежного шлюза и позволяет администратору подтверждать тестовую транзакцию через API.
+| Что | Как работает |
+|---|---|
+| Цены | Задаются на сервере (`PRICE_*` в `.env`), клиент сумму не присылает. `GET /api/payments/prices/` |
+| Оплата | `POST /api/payments/checkout/` `{"purpose": "premium \| calculator \| pack_project \| pack_business_plan"}` |
+| Premium | Оплата продлевает подписку на `PREMIUM_PERIOD_DAYS` дней (продление добавляется к текущему сроку) |
+| Калькулятор | Premium и админ — бесплатно. Остальные: оплатить разово, затем передать `payment_id` и `access_token` в `POST /api/calculator/`. Одна оплата = один расчёт |
+| Проекты и бизнес-планы | В подписке по 10 каждого типа. `POST /api/database-resources/<id>/unlock/` открывает материал и тратит одно место, повторное открытие бесплатно. Лимит исчерпан → ответ 402 с предложением пакета. `GET /api/database-resources/quota/` — остатки |
+| Пакеты по 50 | Покупаются подписчиками Premium (`pack_project`, `pack_business_plan`), места из пакета тратятся после мест подписки. Купленное в пакете остаётся доступным и после окончания подписки |
+| Автоподнятие | `POST /api/ads/<id>/auto-bump/` `{"enabled": true}` (Premium). Само поднятие делает `process_platform_jobs`. Ручное поднятие: `POST /api/ads/<id>/bump/` |
+| Доля в бизнесе | У объявления есть `listing_type`: `request`, `sell_share`, `buy_share`. Объявления `sell_share` / `buy_share` от Premium идут первыми в `/api/ads/` |
+
+### Платёжный шлюз
+
+* `PAYMENT_GATEWAY=stub` (по умолчанию) — тест без денег. «Оплата» подтверждается `POST /api/payments/<id>/stub-pay/` с `access_token`; работает только при `DJANGO_DEBUG=True` (или `PAYMENTS_STUB_ENABLED=True`). Админ может подтвердить платёж вручную: `POST /api/payments/<id>/confirm/`.
+* `PAYMENT_GATEWAY=paybox` — боевой режим. Нужны `PAYBOX_MERCHANT_ID`, `PAYBOX_SECRET_KEY`, `SITE_URL`; в кабинете Paybox укажите Result URL `https://<сайт>/api/payments/webhook/paybox/`. Адаптер написан по описанию протокола и **не проверялся на живом шлюзе**: когда придут ключи, сверьте имена полей и подпись с документацией Paybox.

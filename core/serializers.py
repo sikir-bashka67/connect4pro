@@ -6,6 +6,7 @@ from .models import (
     Financing, Event, DatabaseResource, Application, ForumTopic, ForumPost,
     NotificationSubscription, PaymentTransaction, Deal, AnalyticsEvent,
 )
+from . import services
 
 OFFER_WARNING = (
     'Информация в поле «Я предлагаю» будет видна остальным клиентам и консультантам. '
@@ -204,9 +205,25 @@ class EventSerializer(serializers.ModelSerializer):
 
 
 class DatabaseResourceSerializer(serializers.ModelSerializer):
+    """Содержимое (file_or_content) показывается только тем, у кого есть доступ:
+    админ, свободные материалы, открытые проекты/бизнес-планы, Premium для остальных типов."""
+    content_available = serializers.SerializerMethodField()
+
     class Meta:
         model = DatabaseResource
         fields = '__all__'
+
+    def _viewer(self):
+        return getattr(self.context.get('request'), 'user', None)
+
+    def get_content_available(self, obj):
+        return services.can_read_content(self._viewer(), obj, self.context.get('unlocks'))
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not data['content_available']:
+            data.pop('file_or_content', None)
+        return data
 
 
 class ApplicationSerializer(serializers.ModelSerializer):
@@ -261,10 +278,14 @@ class NotificationSubscriptionSerializer(serializers.ModelSerializer):
 
 
 class PaymentTransactionSerializer(serializers.ModelSerializer):
+    """Только для чтения: платежи создаются через /payments/checkout/, сумма задаётся сервером.
+    access_token здесь намеренно нет: он выдаётся один раз при создании платежа."""
+
     class Meta:
         model = PaymentTransaction
-        fields = '__all__'
-        read_only_fields = ['user', 'status', 'external_id', 'paid_at', 'created_at']
+        fields = ['id', 'user', 'purpose', 'amount', 'currency', 'status', 'provider',
+                  'external_id', 'payment_url', 'description', 'consumed_at', 'created_at', 'paid_at']
+        read_only_fields = fields
 
 
 class DealSerializer(serializers.ModelSerializer):

@@ -1,28 +1,51 @@
-from django.db.models import Q, Count
+import hmac
+from datetime import timedelta
+from decimal import Decimal, InvalidOperation
+
+from django.conf import settings
+from django.db.models import Q, Count, Case, When, Value, IntegerField
+from django.db.models.functions import Coalesce
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.core.mail import send_mail
-from rest_framework import viewsets, generics, status
+from rest_framework import viewsets, mixins, generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError, NotAuthenticated, NotFound
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from .permissions import IsPremiumOrReadOnly, IsAdminOrReadOnly, IsOwnerOrAdmin, IsProviderOwnerOrAdmin
 from .models import *
 from .serializers import *
 from rest_framework.views import APIView
+from . import payments, services
+from .exceptions import PaymentRequired
 
 
 class AdViewSet(viewsets.ModelViewSet):
-    queryset = Ad.objects.all().select_related('author', 'category').prefetch_related('photos')
     serializer_class = AdSerializer
     permission_classes = [IsOwnerOrAdmin]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['category', 'author', 'is_completed', 'auto_bump']
+    filterset_fields = ['category', 'author', 'is_completed', 'auto_bump', 'listing_type']
     search_fields = ['title', 'description', 'what_i_offer_optional']
-    ordering_fields = ['price', 'created_at', 'last_bumped_at']
+    ordering_fields = ['price', 'created_at', 'last_bumped_at', 'sort_at']
+    # по умолчанию: сначала объявления Premium о купле-продаже доли, затем по свежести/поднятию
+    ordering = ['-priority', '-sort_at', '-id']
+
+    def get_queryset(self):
+        now = timezone.now()
+        premium_author = Q(author__role='admin') | (
+            Q(author__subscription='premium')
+            & (Q(author__premium_until__isnull=True) | Q(author__premium_until__gt=now)))
+        return (Ad.objects.all().select_related('author', 'category').prefetch_related('photos')
+                .annotate(
+                    sort_at=Coalesce('last_bumped_at', 'created_at'),
+                    priority=Case(
+                        When(premium_author & Q(listing_type__in=Ad.SHARE_TYPES), then=Value(1)),
+                        default=Value(0), output_field=IntegerField())))
 
     def perform_create(self, serializer):
         if self.request.user.role not in ('client', 'admin'):
@@ -56,15 +79,29 @@ class AdViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def bump(self, request, pk=None):
+        """Ручное поднятие объявления (Premium)."""
         ad = self.get_object()
         if ad.author != request.user and request.user.role != 'admin':
             raise PermissionDenied('Изменять можно только своё объявление.')
-        if not request.user.is_premium_active() and request.user.role != 'admin':
-            raise PermissionDenied('Автоподнятие объявления доступно Premium.')
+        if not request.user.is_premium_active():
+            raise PermissionDenied('Поднятие объявления доступно Premium.')
         ad.last_bumped_at = timezone.now()
-        ad.auto_bump = True
-        ad.save(update_fields=['last_bumped_at', 'auto_bump'])
+        ad.save(update_fields=['last_bumped_at'])
         return Response({'detail': 'Объявление поднято.', 'last_bumped_at': ad.last_bumped_at})
+
+    @action(detail=True, methods=['post'], url_path='auto-bump', permission_classes=[IsAuthenticated])
+    def auto_bump_toggle(self, request, pk=None):
+        """Включить/выключить автоподнятие по расписанию (Premium). Тело: {"enabled": true|false}."""
+        ad = self.get_object()
+        if ad.author != request.user and request.user.role != 'admin':
+            raise PermissionDenied('Изменять можно только своё объявление.')
+        raw = request.data.get('enabled', True)
+        enabled = raw if isinstance(raw, bool) else str(raw).strip().lower() in ('1', 'true', 'yes', 'on')
+        if enabled and not request.user.is_premium_active():
+            raise PermissionDenied('Автоподнятие объявления доступно Premium.')
+        ad.auto_bump = enabled
+        ad.save(update_fields=['auto_bump'])
+        return Response({'auto_bump': ad.auto_bump})
 
 
 class AdPhotoViewSet(viewsets.ModelViewSet):
@@ -177,12 +214,36 @@ class DatabaseResourceViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['resource_type', 'sector', 'is_premium_only']
     search_fields = ['title', 'sector']
+    ordering = ['id']
+
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
-        if user.is_authenticated and user.is_premium_active():
+        if not user.is_authenticated:
+            return qs.filter(is_premium_only=False)
+        if user.is_premium_active():  # включает админа
             return qs
-        return qs.filter(is_premium_only=False)
+        # подписка закончилась: свободные материалы + то, что куплено в пакете
+        return qs.filter(Q(is_premium_only=False) | Q(unlocks__user=user, unlocks__source='pack')).distinct()
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['unlocks'] = services.unlock_map(self.request.user)
+        return ctx
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def quota(self, request):
+        """Сколько проектов и бизнес-планов уже открыто и сколько осталось."""
+        return Response({t: services.quota_status(request.user, t) for t in services.QUOTA_TYPES})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def unlock(self, request, pk=None):
+        """Открыть проект / бизнес-план. Повторное открытие не тратит лимит."""
+        resource = self.get_object()
+        if request.user.role != 'admin' and resource.resource_type in services.QUOTA_TYPES:
+            services.unlock_resource(request.user, resource)
+        ctx = self.get_serializer_context()
+        return Response(DatabaseResourceSerializer(resource, context=ctx).data)
 
 
 class ApplicationViewSet(viewsets.ModelViewSet):
@@ -254,20 +315,111 @@ class NotificationSubscriptionViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer): serializer.save(email=serializer.validated_data.get('email', self.request.user.email))
 
 
-class PaymentTransactionViewSet(viewsets.ModelViewSet):
+class PaymentTransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """Платежи только читаются. Создаются через checkout, подтверждаются шлюзом (webhook) или админом."""
     serializer_class = PaymentTransactionSerializer
     permission_classes = [IsAuthenticated]
+
     def get_queryset(self):
-        return PaymentTransaction.objects.all() if self.request.user.role == 'admin' else PaymentTransaction.objects.filter(user=self.request.user)
-    def perform_create(self, serializer): serializer.save(user=self.request.user)
+        user = self.request.user
+        return PaymentTransaction.objects.all() if user.role == 'admin' else PaymentTransaction.objects.filter(user=user)
+
+    @action(detail=False, methods=['get'], permission_classes=[AllowAny])
+    def prices(self, request):
+        return Response({k: {'amount': str(v), 'currency': 'KGS'} for k, v in settings.PRICES_KGS.items()})
+
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny], throttle_classes=[AnonRateThrottle])
+    def checkout(self, request):
+        """Создать платёж. Тело: {"purpose": "premium|calculator|pack_project|pack_business_plan"}."""
+        purpose = request.data.get('purpose')
+        if not isinstance(purpose, str) or purpose not in settings.PRICES_KGS:
+            raise ValidationError({'purpose': f'Допустимо: {", ".join(settings.PRICES_KGS)}.'})
+        user = request.user if request.user.is_authenticated else None
+        if purpose != 'calculator':
+            if user is None:
+                raise NotAuthenticated('Войдите, чтобы оплатить.')
+        if purpose in ('pack_project', 'pack_business_plan') and not user.is_premium_active():
+            raise PermissionDenied('Пакеты баз данных доступны подписчикам Premium.')
+        if purpose == 'calculator' and user is not None and user.is_premium_active():
+            raise ValidationError('Для Premium калькулятор бесплатный.')
+        tx = payments.create_transaction(user, purpose)
+        try:
+            invoice = payments.get_gateway().create_invoice(tx, request)
+        except payments.PaymentGatewayError as exc:
+            tx.status = 'failed'
+            tx.save(update_fields=['status'])
+            return Response({'detail': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        tx.external_id = invoice.get('external_id', '')
+        tx.payment_url = invoice.get('payment_url', '')
+        tx.save(update_fields=['external_id', 'payment_url'])
+        data = PaymentTransactionSerializer(tx).data
+        # токен выдаётся один раз: по нему гость потом предъявляет оплату калькулятора
+        data['access_token'] = tx.access_token
+        data['gateway'] = settings.PAYMENT_GATEWAY
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='stub-pay', permission_classes=[AllowAny],
+            throttle_classes=[AnonRateThrottle])
+    def stub_pay(self, request, pk=None):
+        """ТЕСТОВАЯ оплата без шлюза. Выключена, когда PAYMENT_GATEWAY != stub или отключена в настройках."""
+        if not (settings.PAYMENT_GATEWAY == 'stub' and settings.PAYMENTS_STUB_ENABLED):
+            raise NotFound()
+        tx = get_object_or_404(PaymentTransaction, pk=pk)
+        token = str(request.data.get('access_token', ''))
+        if not tx.access_token or not hmac.compare_digest(token.encode('utf-8'), tx.access_token.encode('utf-8')):
+            raise PermissionDenied('Неверный токен платежа.')
+        tx = payments.mark_paid(tx, external_id=f'stub-{tx.id}')
+        return Response(PaymentTransactionSerializer(tx).data)
+
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
-        payment = self.get_object()
-        if request.user.role != 'admin': raise PermissionDenied('Подтверждать платежи может только администратор.')
-        payment.status = 'paid'; payment.paid_at = timezone.now(); payment.save(update_fields=['status', 'paid_at'])
-        if payment.description.lower().startswith('premium'):
-            user = payment.user; user.subscription = 'premium'; user.premium_until = timezone.now() + timezone.timedelta(days=30); user.save(update_fields=['subscription','premium_until'])
-        return Response(PaymentTransactionSerializer(payment).data)
+        """Ручное подтверждение админом (например, оплата переводом)."""
+        if request.user.role != 'admin':
+            raise PermissionDenied('Подтверждать платежи может только администратор.')
+        tx = payments.mark_paid(self.get_object())
+        return Response(PaymentTransactionSerializer(tx).data)
+
+
+class PayboxWebhookView(APIView):
+    """result_url для Paybox: шлюз сообщает итог оплаты. Подпись проверяется, сумма сверяется."""
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def _handle(self, request):
+        if settings.PAYMENT_GATEWAY != 'paybox':
+            raise NotFound()
+        gw = payments.PayboxGateway()
+        script = request.path.rstrip('/').rsplit('/', 1)[-1]
+        data = request.data.dict() if hasattr(request.data, 'dict') else dict(request.data)
+        params = {**request.query_params.dict(), **{k: str(v) for k, v in data.items()}}
+        try:
+            if not gw.verify_callback(script, params):
+                return Response({'detail': 'Неверная подпись.'}, status=status.HTTP_403_FORBIDDEN)
+        except payments.PaymentGatewayError:
+            return Response({'detail': 'Шлюз не настроен.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        def reply(st, text=''):
+            return HttpResponse(gw.callback_response(script, st, text), content_type='application/xml')
+
+        try:
+            tx = PaymentTransaction.objects.get(pk=int(params.get('pg_order_id', '')))
+            amount = Decimal(params.get('pg_amount', ''))
+        except (PaymentTransaction.DoesNotExist, ValueError, InvalidOperation):
+            return reply('rejected', 'Платёж не найден')
+        if amount != tx.amount:
+            return reply('rejected', 'Неверная сумма')
+        if str(params.get('pg_result')) == '1':
+            payments.mark_paid(tx, external_id=str(params.get('pg_payment_id', '')))
+        elif tx.status == 'pending':
+            tx.status = 'failed'
+            tx.save(update_fields=['status'])
+        return reply('ok')
+
+    def post(self, request):
+        return self._handle(request)
+
+    def get(self, request):
+        return self._handle(request)
 
 
 class DealViewSet(viewsets.ModelViewSet):
@@ -298,17 +450,41 @@ class DealViewSet(viewsets.ModelViewSet):
 
 
 class GrantProbabilityCalculatorView(APIView):
-    permission_classes=[AllowAny]
+    """Калькулятор вероятности: бесплатно для Premium, остальным — по разовой оплате.
+    Оплата предъявляется полями payment_id + access_token (из /payments/checkout/)."""
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
+
     def post(self, request):
-        turnover=request.data.get('annual_turnover','up_to_100k')
-        try: employees=int(request.data.get('employees_count',1))
-        except (TypeError,ValueError): employees=1
-        sector=request.data.get('sector','general'); score=50
-        if employees>5: score+=20
-        if turnover in ['up_to_5m','up_to_10m','over_10m']: score+=25
-        elif turnover in ['up_to_1m','up_to_500k']: score+=10
-        probability=min(score,95)
-        return Response({'sector':sector,'calculated_probability_percent':probability,'recommendation':'Рекомендуем доработать бизнес-план с помощью наших провайдеров.' if probability<=70 else 'У вас высокий расчетный показатель.'})
+        turnover = request.data.get('annual_turnover', 'up_to_100k')
+        if turnover not in dict(User.TURNOVER_CHOICES):
+            raise ValidationError({'annual_turnover': 'Недопустимое значение оборота.'})
+        try:
+            employees = int(request.data.get('employees_count', 1))
+            if employees < 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            raise ValidationError({'employees_count': 'Должно быть неотрицательным целым числом.'})
+        sector = str(request.data.get('sector', 'general'))[:150]
+
+        user = request.user
+        if not (user.is_authenticated and user.is_premium_active()):
+            # входные данные проверены выше, чтобы оплата не сгорала из-за ошибки в форме
+            payments.consume_calculator_payment(request.data.get('payment_id'), request.data.get('access_token'))
+
+        score = 50
+        if employees > 5:
+            score += 20
+        if turnover in ['up_to_5m', 'up_to_10m', 'over_10m']:
+            score += 25
+        elif turnover in ['up_to_1m', 'up_to_500k']:
+            score += 10
+        probability = min(score, 95)
+        return Response({
+            'sector': sector,
+            'calculated_probability_percent': probability,
+            'recommendation': 'Рекомендуем доработать бизнес-план с помощью наших провайдеров.' if probability <= 70 else 'У вас высокий расчетный показатель.',
+        })
 
 
 class RegisterView(generics.CreateAPIView):
@@ -344,7 +520,7 @@ class PlatformAnalyticsView(APIView):
     permission_classes=[IsAuthenticated]
     def get(self, request):
         if request.user.role!='admin': raise PermissionDenied('Аналитика доступна только администратору.')
-        now=timezone.now(); day=now-timezone.timedelta(days=1); week=now-timezone.timedelta(days=7); month=now-timezone.timedelta(days=30); year=now-timezone.timedelta(days=365)
+        now=timezone.now(); day=now-timedelta(days=1); week=now-timedelta(days=7); month=now-timedelta(days=30); year=now-timedelta(days=365)
         def visits(since=None):
             q=AnalyticsEvent.objects.filter(event_type='visit')
             return q.filter(created_at__gte=since).count() if since else q.count()

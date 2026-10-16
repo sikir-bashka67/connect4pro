@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+from decimal import Decimal
 from pathlib import Path
 import os
 
@@ -168,6 +169,30 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
     'DEFAULT_THROTTLE_RATES': {'anon': '60/min'},
 }
+
+# ---- Платежи и Premium (этап 2) -------------------------------------------
+# stub — тестовый режим без реального шлюза; paybox — боевой режим (нужны ключи).
+PAYMENT_GATEWAY = os.environ.get('PAYMENT_GATEWAY', 'stub')
+# Тестовая «оплата» кнопкой работает только при DEBUG (или если явно включена).
+PAYMENTS_STUB_ENABLED = env_bool('PAYMENTS_STUB_ENABLED', DEBUG)
+
+# ВНИМАНИЕ: цены в ТЗ не указаны, это временные значения. Задайте свои через .env.
+PRICES_KGS = {
+    'premium': Decimal(os.environ.get('PRICE_PREMIUM', '500')),                 # за период подписки
+    'calculator': Decimal(os.environ.get('PRICE_CALCULATOR', '200')),           # разовое использование
+    'pack_project': Decimal(os.environ.get('PRICE_PACK_PROJECTS', '3000')),     # пакет 50 проектов
+    'pack_business_plan': Decimal(os.environ.get('PRICE_PACK_BUSINESS_PLANS', '3000')),
+}
+PREMIUM_PERIOD_DAYS = int(os.environ.get('PREMIUM_PERIOD_DAYS', '30'))
+PREMIUM_INCLUDED_RESOURCES = 10   # проектов и бизнес-планов (каждого типа) входит в подписку
+RESOURCE_PACK_SIZE = 50           # размер докупаемого пакета
+AUTO_BUMP_INTERVAL_HOURS = int(os.environ.get('AUTO_BUMP_INTERVAL_HOURS', '24'))
+
+# Paybox (Freedom Pay). Заполняются, когда будут выданы ключи.
+SITE_URL = os.environ.get('SITE_URL', 'http://127.0.0.1:8000').rstrip('/')
+PAYBOX_MERCHANT_ID = os.environ.get('PAYBOX_MERCHANT_ID', '')
+PAYBOX_SECRET_KEY = os.environ.get('PAYBOX_SECRET_KEY', '')
+PAYBOX_API_URL = os.environ.get('PAYBOX_API_URL', 'https://api.paybox.money').rstrip('/')
 
 # Загрузки: максимум 5 МБ на файл (фото, логотипы)
 DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024

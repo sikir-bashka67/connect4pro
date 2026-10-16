@@ -102,6 +102,14 @@ class Category(models.Model):
 
 
 class Ad(models.Model):
+    LISTING_TYPES = (
+        ('request', 'Запрос услуги'),
+        ('sell_share', 'Продаю долю в бизнесе'),
+        ('buy_share', 'Куплю долю в бизнесе'),
+    )
+    SHARE_TYPES = ('sell_share', 'buy_share')
+
+    listing_type = models.CharField(max_length=20, choices=LISTING_TYPES, default='request', verbose_name='Тип объявления')
     title = models.CharField(max_length=255, verbose_name='Заголовок запроса')
     description = models.TextField(verbose_name='Описание запроса')
     price = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='Бюджет / Цена (сом/доллары)')
@@ -260,15 +268,51 @@ class PaymentTransaction(models.Model):
         ('failed', 'Ошибка'),
         ('refunded', 'Возвращено'),
     )
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='payments')
+    PURPOSE_CHOICES = (
+        ('premium', 'Подписка Premium'),
+        ('calculator', 'Калькулятор вероятности (разово)'),
+        ('pack_project', 'Пакет из 50 проектов'),
+        ('pack_business_plan', 'Пакет из 50 бизнес-планов'),
+    )
+    # user пустой, когда за калькулятор платит незарегистрированный гость
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='payments')
+    purpose = models.CharField(max_length=30, choices=PURPOSE_CHOICES, default='premium')
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     currency = models.CharField(max_length=10, default='KGS')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     provider = models.CharField(max_length=50, default='paybox')
     external_id = models.CharField(max_length=255, blank=True)
+    payment_url = models.CharField(max_length=500, blank=True)
     description = models.CharField(max_length=500, blank=True)
+    # секрет плательщика: по нему гость предъявляет оплату калькулятора
+    access_token = models.CharField(max_length=64, blank=True)
+    # когда разовая услуга (калькулятор) была использована
+    consumed_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     paid_at = models.DateTimeField(blank=True, null=True)
+
+    def __str__(self):
+        return f'#{self.id} {self.get_purpose_display()} — {self.amount} {self.currency} ({self.status})'
+
+
+class ResourceUnlock(models.Model):
+    """Какие проекты / бизнес-планы пользователь уже открыл и за счёт чего."""
+    SOURCE_CHOICES = (
+        ('subscription', 'Входит в подписку Premium'),
+        ('pack', 'Докупленный пакет'),
+    )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='resource_unlocks')
+    resource = models.ForeignKey(DatabaseResource, on_delete=models.CASCADE, related_name='unlocks')
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'resource'], name='uniq_unlock_user_resource'),
+        ]
+
+    def __str__(self):
+        return f'{self.user.username} → {self.resource.title} ({self.source})'
 
 
 class Deal(models.Model):

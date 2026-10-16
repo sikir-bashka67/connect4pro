@@ -55,6 +55,9 @@ class IsProviderOwnerOrAdmin(permissions.BasePermission):
 
 
 class IsPremiumOrReadOnly(permissions.BasePermission):
+    """Читать можно всем, менять — только админу. Что именно видно читающему, решает get_queryset
+    и сериализатор вьюхи (Premium-материалы скрыты, содержимое открывается по лимитам)."""
+
     def has_permission(self, request, view):
         if request.method in permissions.SAFE_METHODS:
             return True
@@ -62,9 +65,7 @@ class IsPremiumOrReadOnly(permissions.BasePermission):
 
     def has_object_permission(self, request, view, obj):
         if request.method in permissions.SAFE_METHODS:
-            if not getattr(obj, 'is_premium_only', False):
-                return True
-            return bool(request.user and request.user.is_authenticated and request.user.is_premium_active())
+            return True
         return _is_admin(request.user)
 
 

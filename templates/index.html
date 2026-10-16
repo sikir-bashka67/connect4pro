@@ -1,14 +1,546 @@
-<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect4Pro</title>
-<style>body{font-family:Arial,sans-serif;margin:0;background:#f5f7fb;color:#182230}header{background:#172033;color:white;padding:18px 6%;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}nav button{margin:4px;padding:9px 12px;border:0;border-radius:8px;cursor:pointer}main{padding:28px 6%;max-width:1200px;margin:auto}.hero{background:white;padding:28px;border-radius:16px;margin-bottom:20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}.card{background:white;padding:18px;border-radius:14px;box-shadow:0 2px 10px #0001}.muted{color:#697586}input,textarea,select{width:100%;padding:10px;margin:6px 0 12px;box-sizing:border-box;border:1px solid #ccd3df;border-radius:8px}button.primary{background:#315efb;color:white}.hidden{display:none}.pill{display:inline-block;padding:5px 8px;background:#eef2ff;border-radius:99px;font-size:12px}</style></head>
-<body><header><b>Connect4Pro</b><nav><button onclick="show('home')">Главная</button><button onclick="show('ads')">Объявления</button><button onclick="show('financing')">Финансирование</button><button onclick="show('providers')">Провайдеры</button><button onclick="show('events')">Мероприятия</button><button onclick="show('forum')">Форум</button><button onclick="show('calculator')">Калькулятор</button><button onclick="show('account')">Аккаунт</button></nav></header>
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Connect4Pro</title>
+<style>
+:root{--bg:#f5f7fb;--ink:#182230;--muted:#697586;--card:#fff;--line:#ccd3df;--brand:#315efb;--dark:#172033;--ok:#12805c;--err:#c0352b;--warn:#a15c07}
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink)}
+header{background:var(--dark);color:#fff;padding:14px 5%;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+header b{font-size:18px}
+nav{display:flex;flex-wrap:wrap;gap:4px}
+nav button{padding:9px 12px;border:0;border-radius:8px;cursor:pointer;background:#fff;color:var(--ink)}
+nav button.active{background:var(--brand);color:#fff}
+.who{font-size:13px;display:flex;align-items:center;gap:8px}
+main{padding:24px 5%;max-width:1200px;margin:auto}
+h2{margin:0 0 16px}
+.hero{background:#fff;padding:28px;border-radius:16px;margin-bottom:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:16px}
+.card{background:var(--card);padding:18px;border-radius:14px;box-shadow:0 2px 10px #0001}
+.card h3{margin:8px 0}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+label{font-size:13px;color:var(--muted)}
+input,textarea,select{width:100%;padding:10px;margin:6px 0 12px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff}
+button{font:inherit}
+.btn{padding:9px 14px;border:1px solid var(--line);border-radius:8px;cursor:pointer;background:#fff;color:var(--ink);margin:2px 4px 2px 0}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.danger{color:var(--err)}
+.btn:disabled{opacity:.55;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.hidden{display:none!important}
+.pill{display:inline-block;padding:4px 9px;background:#eef2ff;border-radius:99px;font-size:12px;margin-right:4px}
+.pill.prem{background:#fff4d6;color:var(--warn)}
+.pill.ok{background:#e1f6ee;color:var(--ok)}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.row>*{flex:0 0 auto}
+.bar{height:8px;background:#e6eaf2;border-radius:99px;overflow:hidden;margin:6px 0 10px}
+.bar i{display:block;height:100%;background:var(--brand)}
+.content{white-space:pre-wrap;background:#f3f6fb;border-radius:8px;padding:10px;margin-top:8px;word-break:break-word}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{text-align:left;padding:8px 6px;border-bottom:1px solid #e6eaf2}
+.empty{color:var(--muted);padding:8px 0}
+#toasts{position:fixed;top:14px;right:14px;z-index:50;display:flex;flex-direction:column;gap:8px;width:min(380px,calc(100vw - 28px))}
+.toast{background:#fff;border-left:5px solid var(--brand);border-radius:10px;box-shadow:0 6px 24px #0003;padding:12px 14px;display:flex;gap:10px;align-items:flex-start;animation:in .18s ease-out}
+.toast.success{border-color:var(--ok)}.toast.error{border-color:var(--err)}.toast.warn{border-color:var(--warn)}
+.toast .msg{flex:1;white-space:pre-line;font-size:14px}
+.toast .x{border:0;background:none;cursor:pointer;font-size:18px;line-height:1;color:var(--muted)}
+@keyframes in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+#modal{position:fixed;inset:0;background:#0006;z-index:60;display:flex;align-items:center;justify-content:center;padding:16px}
+#modal .box{background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%}
+@media(max-width:600px){
+  #toasts{top:auto;bottom:14px;right:14px}
+}
+</style>
+</head>
+<body>
+<header>
+  <b>Connect4Pro</b>
+  <nav id="nav"></nav>
+  <div class="who" id="who"></div>
+</header>
+<div id="toasts" role="status" aria-live="polite"></div>
+<div id="modal" class="hidden" role="dialog" aria-modal="true"><div class="box"><p id="modalText"></p><div class="row"><button class="btn primary" id="modalOk">Да</button><button class="btn" id="modalNo">Отмена</button></div></div></div>
+
 <main>
-<section id="home" class="page"><div class="hero"><h1>Возможности для бизнеса в одном месте</h1><p>Гранты, инвестиции, провайдеры услуг, мероприятия, объявления и бизнес-сообщество.</p><button class="primary" onclick="show('ads')">Смотреть объявления</button></div><div class="grid" id="homeCards"></div></section>
-<section id="ads" class="page hidden"><h2>Объявления</h2><div id="adsList" class="grid"></div></section>
+<section id="home" class="page">
+  <div class="hero"><h1>Возможности для бизнеса в одном месте</h1><p>Гранты, инвестиции, провайдеры услуг, мероприятия, объявления и бизнес-сообщество.</p><button class="btn primary" data-go="ads">Смотреть объявления</button></div>
+  <div class="grid" id="homeCards"></div>
+</section>
+
+<section id="ads" class="page hidden">
+  <h2>Объявления</h2>
+  <div class="card"><label for="adsType">Показать</label>
+    <select id="adsType"><option value="">Все объявления</option><option value="request">Запросы услуг</option><option value="sell_share">Продажа доли</option><option value="buy_share">Покупка доли</option></select></div>
+  <div id="adsList" class="grid"></div>
+</section>
+
+<section id="db" class="page hidden">
+  <h2>Базы данных</h2>
+  <div class="card" id="dbInfo"></div>
+  <div class="card"><label for="dbType">Тип материалов</label>
+    <select id="dbType"><option value="">Все</option><option value="project">Проекты</option><option value="business_plan">Бизнес-планы</option><option value="case">Кейсы</option><option value="donor">Доноры</option><option value="investor">Инвесторы</option><option value="franchise">Франчайзинг</option><option value="sme">МСБ</option></select></div>
+  <div id="dbList" class="grid"></div>
+</section>
+
 <section id="financing" class="page hidden"><h2>Гранты и инвестиции</h2><div id="financingList" class="grid"></div></section>
 <section id="providers" class="page hidden"><h2>Провайдеры</h2><div id="providersList" class="grid"></div></section>
 <section id="events" class="page hidden"><h2>Мероприятия</h2><div id="eventsList" class="grid"></div></section>
-<section id="forum" class="page hidden"><h2>Форум</h2><div id="forumList" class="grid"></div><div class="card"><h3>Новая тема</h3><input id="topicTitle" placeholder="Название темы"><select id="topicType"><option value="general">Общие вопросы</option><option value="grants">Гранты</option><option value="investments">Инвестиции</option><option value="business_sale">Купля-продажа бизнеса</option><option value="legal">Юридические вопросы</option></select><button class="primary" onclick="createTopic()">Создать</button></div></section>
-<section id="calculator" class="page hidden"><h2>Калькулятор вероятности</h2><div class="card"><label>Оборот</label><select id="turnover"><option value="up_to_100k">до 100 000</option><option value="up_to_500k">до 500 000</option><option value="up_to_1m">до 1 млн</option><option value="up_to_5m">до 5 млн</option><option value="up_to_10m">до 10 млн</option><option value="over_10m">более 10 млн</option></select><label>Сотрудники</label><input id="employees" type="number" value="5"><label>Сектор</label><input id="sector" placeholder="IT, сельское хозяйство..."><button class="primary" onclick="calculate()">Рассчитать</button><div id="calcResult"></div></div></section>
-<section id="account" class="page hidden"><h2>Аккаунт</h2><div class="card" id="accountBox"></div><div class="card"><h3>Вход</h3><input id="loginUser" placeholder="username"><input id="loginPass" type="password" placeholder="Пароль"><button class="primary" onclick="login()">Войти</button></div><div class="card"><h3>Регистрация</h3><input id="regUser" placeholder="username"><input id="regEmail" placeholder="email"><input id="regPass" type="password" placeholder="Пароль"><select id="regRole"><option value="client">Клиент</option><option value="provider">Провайдер</option></select><button class="primary" onclick="register()">Создать аккаунт</button></div></section>
+
+<section id="forum" class="page hidden">
+  <h2>Форум</h2><div id="forumList" class="grid"></div>
+  <div class="card"><h3>Новая тема</h3>
+    <input id="topicTitle" placeholder="Название темы" aria-label="Название темы">
+    <select id="topicType" aria-label="Раздел"><option value="general">Общие вопросы</option><option value="grants">Гранты</option><option value="investments">Инвестиции</option><option value="business_sale">Купля-продажа бизнеса</option><option value="legal">Юридические вопросы</option></select>
+    <button class="btn primary" id="topicBtn">Создать</button></div>
+</section>
+
+<section id="calculator" class="page hidden">
+  <h2>Калькулятор вероятности</h2>
+  <div class="card">
+    <p class="muted small" id="calcPrice"></p>
+    <label for="turnover">Оборот</label>
+    <select id="turnover"><option value="up_to_100k">до 100 000</option><option value="up_to_500k">до 500 000</option><option value="up_to_1m">до 1 млн</option><option value="up_to_5m">до 5 млн</option><option value="up_to_10m">до 10 млн</option><option value="over_10m">более 10 млн</option></select>
+    <label for="employees">Сотрудники</label><input id="employees" type="number" min="0" value="5">
+    <label for="sector">Сектор</label><input id="sector" placeholder="IT, сельское хозяйство...">
+    <button class="btn primary" id="calcBtn">Рассчитать</button>
+    <div id="calcResult"></div>
+  </div>
+</section>
+
+<section id="account" class="page hidden">
+  <h2>Аккаунт</h2>
+  <div id="guestBox">
+    <div class="grid">
+      <form class="card" id="loginForm"><h3>Вход</h3>
+        <input id="loginUser" placeholder="Логин" autocomplete="username" aria-label="Логин">
+        <input id="loginPass" type="password" placeholder="Пароль" autocomplete="current-password" aria-label="Пароль">
+        <button class="btn primary" type="submit">Войти</button></form>
+      <form class="card" id="regForm"><h3>Регистрация</h3>
+        <input id="regUser" placeholder="Логин" autocomplete="username" aria-label="Логин">
+        <input id="regEmail" type="email" placeholder="Почта" autocomplete="email" aria-label="Почта">
+        <input id="regPass" type="password" placeholder="Пароль (от 8 символов)" autocomplete="new-password" aria-label="Пароль">
+        <select id="regRole" aria-label="Роль"><option value="client">Клиент (МСБ)</option><option value="provider">Провайдер услуг</option></select>
+        <button class="btn primary" type="submit">Создать аккаунт</button></form>
+    </div>
+  </div>
+
+  <div id="userBox" class="hidden">
+    <div class="card" id="profileCard"></div>
+    <div class="card" id="quotaCard"></div>
+    <div class="card hidden" id="adFormCard"><h3>Новое объявление</h3>
+      <label for="adTitle">Заголовок</label><input id="adTitle">
+      <label for="adDesc">Описание</label><textarea id="adDesc" rows="3"></textarea>
+      <div class="row"><div><label for="adPrice">Цена / бюджет</label><input id="adPrice" type="number" min="0" step="any"></div>
+      <div><label for="adKind">Тип</label><select id="adKind"><option value="request">Запрос услуги</option><option value="sell_share">Продаю долю</option><option value="buy_share">Куплю долю</option></select></div></div>
+      <button class="btn primary" id="adCreateBtn">Разместить</button></div>
+    <div class="card hidden" id="myAdsCard"><h3>Мои объявления</h3><div id="myAds"></div></div>
+    <div class="card"><h3>Мои платежи</h3><div id="myPayments"></div></div>
+  </div>
+</section>
 </main>
-<script>const api='/api';let token=localStorage.getItem('token');const auth=()=>token?{Authorization:'Bearer '+token}:{};async function get(p){let r=await fetch(api+p,{headers:auth()});return r.ok?r.json():[]}async function show(id){document.querySelectorAll('.page').forEach(x=>x.classList.add('hidden'));document.getElementById(id).classList.remove('hidden');if(id==='ads')loadAds();if(id==='financing')loadFinancing();if(id==='providers')loadProviders();if(id==='events')loadEvents();if(id==='forum')loadForum();if(id==='account')loadAccount()}async function loadAds(){let a=await get('/ads/');document.getElementById('adsList').innerHTML=(a.results||a).map(x=>`<div class="card"><span class="pill">Запрос</span><h3>${x.title}</h3><p>${x.description}</p><b>${x.price}</b></div>`).join('')||'<p>Пока нет объявлений.</p>'}async function loadFinancing(){let a=await get('/financing/');document.getElementById('financingList').innerHTML=(a.results||a).map(x=>`<div class="card"><span class="pill">${x.financing_type}</span><h3>${x.title}</h3><p>${x.description}</p><p>${x.amount_description}</p><small>Дедлайн: ${x.deadline||'—'}</small></div>`).join('')||'<p>Пока нет программ.</p>'}async function loadProviders(){let a=await get('/provider-profiles/');document.getElementById('providersList').innerHTML=(a.results||a).map(x=>`<div class="card"><h3>${x.company_name}</h3><p>${x.activity}</p><p>${x.description}</p><p class="muted">${x.services_description}</p></div>`).join('')||'<p>Пока нет провайдеров.</p>'}async function loadEvents(){let a=await get('/events/');document.getElementById('eventsList').innerHTML=(a.results||a).map(x=>`<div class="card"><span class="pill">${x.event_type}</span><h3>${x.title}</h3><p>${x.description}</p><p>${x.date_and_time} · ${x.format}</p></div>`).join('')||'<p>Пока нет мероприятий.</p>'}async function loadForum(){let a=await get('/forum/topics/');document.getElementById('forumList').innerHTML=(a.results||a).map(x=>`<div class="card"><h3>${x.title}</h3><p>${x.topic_type} · ${x.author_name}</p><small>${x.created_at}</small></div>`).join('')||'<p>Пока нет тем.</p>'}async function createTopic(){if(!token)return alert('Сначала войдите.');let r=await fetch(api+'/forum/topics/',{method:'POST',headers:{'Content-Type':'application/json',...auth()},body:JSON.stringify({title:topicTitle.value,topic_type:topicType.value})});if(r.ok){topicTitle.value='';loadForum()}else alert('Не удалось создать тему.')}async function calculate(){let r=await fetch(api+'/calculator/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({annual_turnover:turnover.value,employees_count:employees.value,sector:sector.value})});let x=await r.json();calcResult.innerHTML=`<h3>${x.calculated_probability_percent}%</h3><p>${x.recommendation}</p>`}async function login(){let r=await fetch('/api/token/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:loginUser.value,password:loginPass.value})});let x=await r.json();if(x.access){token=x.access;localStorage.setItem('token',token);loadAccount();alert('Вход выполнен')}else alert(x.detail||'Ошибка входа')}async function register(){let r=await fetch(api+'/register/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:regUser.value,email:regEmail.value,password:regPass.value,role:regRole.value})});let x=await r.json();if(r.ok){alert('Аккаунт создан. Теперь войдите.')}else alert(JSON.stringify(x))}async function loadAccount(){if(!token){accountBox.innerHTML='<p>Вы не вошли.</p>';return}let x=await get('/me/');accountBox.innerHTML=`<h3>${x.username}</h3><p>${x.first_name||''} ${x.last_name||''}</p><p>Роль: ${x.role} · Подписка: ${x.subscription}</p><button onclick="logout()">Выйти</button>`}function logout(){token=null;localStorage.removeItem('token');loadAccount()}show('home');get('/ads/').then(a=>{homeCards.innerHTML=`<div class="card"><h3>${(a.results||a).length}</h3><p>объявлений</p></div>`});</script></body></html>
+
+{% verbatim %}
+<script>
+'use strict';
+const API = '/api';
+const LS = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} },
+};
+const S = { access: LS.get('access'), refresh: LS.get('refresh'), me: null, prices: null };
+const $ = id => document.getElementById(id);
+
+const LABEL = {
+  role: { client: 'Клиент', provider: 'Провайдер', admin: 'Администратор' },
+  kind: { request: 'Запрос услуги', sell_share: 'Продаю долю', buy_share: 'Куплю долю' },
+  res: { project: 'Проект', business_plan: 'Бизнес-план', case: 'Кейс', donor: 'Донор', investor: 'Инвестор', franchise: 'Франчайзинг', sme: 'МСБ' },
+  fin: { grant: 'Грант', investment: 'Инвестиции' },
+  ev: { training: 'Тренинг / курс', conference: 'Конференция', internship: 'Стажировка', b2b: 'B2B ивент' },
+  topic: { grants: 'Гранты', investments: 'Инвестиции', business_sale: 'Купля-продажа бизнеса', legal: 'Юридические вопросы', general: 'Общие вопросы' },
+  purpose: { premium: 'Подписка Premium', calculator: 'Калькулятор', pack_project: 'Пакет 50 проектов', pack_business_plan: 'Пакет 50 бизнес-планов' },
+  pay: { pending: 'Ожидает оплаты', paid: 'Оплачено', failed: 'Ошибка', refunded: 'Возврат' },
+  field: { username: 'Логин', email: 'Почта', password: 'Пароль', title: 'Заголовок', description: 'Описание', price: 'Цена', listing_type: 'Тип', purpose: 'Назначение' },
+};
+const PACK = { project: 'pack_project', business_plan: 'pack_business_plan' };
+
+// ---------- утилиты ----------
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+const fmtDate = s => s ? new Date(s).toLocaleDateString('ru-RU') : '—';
+const fmtMoney = (a, c) => `${Number(a).toLocaleString('ru-RU')} ${c === 'KGS' || !c ? 'сом' : c}`;
+const rows = d => (d && d.results) ? d.results : (Array.isArray(d) ? d : []);
+const isPremium = () => !!(S.me && S.me.is_premium);
+
+// ---------- уведомления внутри страницы ----------
+function toast(text, type = 'info', opts = {}) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  const msg = document.createElement('div'); msg.className = 'msg'; msg.textContent = text;
+  const x = document.createElement('button'); x.className = 'x'; x.type = 'button'; x.setAttribute('aria-label', 'Закрыть'); x.textContent = '×';
+  el.append(msg);
+  if (opts.action) {
+    const a = document.createElement('button'); a.type = 'button'; a.className = 'btn primary'; a.textContent = opts.action.label;
+    a.onclick = () => { el.remove(); opts.action.fn(); };
+    el.append(a);
+  }
+  el.append(x);
+  x.onclick = () => el.remove();
+  $('toasts').append(el);
+  const ms = opts.ms || (type === 'error' || opts.action ? 9000 : 4500);
+  setTimeout(() => el.remove(), ms);
+}
+function askConfirm(text, okLabel = 'Да') {
+  return new Promise(res => {
+    $('modalText').textContent = text; $('modalOk').textContent = okLabel;
+    $('modal').classList.remove('hidden'); $('modalOk').focus();
+    const done = v => { $('modal').classList.add('hidden'); $('modalOk').onclick = $('modalNo').onclick = null; res(v); };
+    $('modalOk').onclick = () => done(true); $('modalNo').onclick = () => done(false);
+  });
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal').classList.contains('hidden')) $('modalNo').click(); });
+
+// ---------- запросы к API ----------
+class ApiError extends Error {
+  constructor(status, data) { super(errText(data)); this.status = status; this.data = data || {}; }
+}
+function errText(d) {
+  if (!d) return 'Ошибка запроса.';
+  if (typeof d === 'string') return d;
+  if (d.detail) return String(d.detail);
+  if (Array.isArray(d)) return d.map(errText).join(' ');
+  return Object.entries(d).map(([k, v]) => {
+    const t = Array.isArray(v) ? v.map(errText).join(' ') : (typeof v === 'object' ? errText(v) : v);
+    return k === 'non_field_errors' ? t : `${LABEL.field[k] || k}: ${t}`;
+  }).join('\n');
+}
+let refreshing = null;
+function refreshToken() {
+  if (!S.refresh) return Promise.resolve(false);
+  refreshing = refreshing || fetch(API + '/token/refresh/', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh: S.refresh }),
+  }).then(async r => {
+    if (!r.ok) return false;
+    const d = await r.json(); S.access = d.access; LS.set('access', d.access);
+    if (d.refresh) { S.refresh = d.refresh; LS.set('refresh', d.refresh); }
+    return true;
+  }).catch(() => false).finally(() => { refreshing = null; });
+  return refreshing;
+}
+async function req(path, { method = 'GET', body, retry = true } = {}) {
+  const headers = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (S.access) headers.Authorization = 'Bearer ' + S.access;
+  let r;
+  try { r = await fetch(API + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined }); }
+  catch (e) { throw new ApiError(0, { detail: 'Нет связи с сервером. Проверьте интернет.' }); }
+  // просроченный токен ломает даже публичные страницы: пробуем обновить, иначе выходим
+  if (r.status === 401 && S.access && retry) {
+    if (await refreshToken()) return req(path, { method, body, retry: false });
+    logout('Сессия истекла. Войдите снова.', 'warn');
+    const err = new ApiError(401, { detail: 'Сессия истекла.' }); err.silent = true; throw err;
+  }
+  let data = null; try { data = await r.json(); } catch (e) {}
+  if (!r.ok) throw new ApiError(r.status, data);
+  return data;
+}
+// показать ошибку и не падать
+const fail = e => { if (!e.silent) toast(e.message || 'Что-то пошло не так.', 'error'); };
+const safe = fn => async (...a) => { try { return await fn(...a); } catch (e) { fail(e); } };
+
+// ---------- навигация ----------
+const PAGES = [['home', 'Главная'], ['ads', 'Объявления'], ['db', 'Базы данных'], ['financing', 'Финансирование'], ['providers', 'Провайдеры'], ['events', 'Мероприятия'], ['forum', 'Форум'], ['calculator', 'Калькулятор'], ['account', 'Аккаунт']];
+$('nav').innerHTML = PAGES.map(([id, t]) => `<button type="button" data-go="${id}">${t}</button>`).join('');
+document.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b) show(b.dataset.go); });
+
+const LOADERS = { home: loadHome, ads: loadAds, db: loadDb, financing: loadFinancing, providers: loadProviders, events: loadEvents, forum: loadForum, calculator: loadCalcInfo, account: loadAccount };
+function show(id) {
+  if (!LOADERS[id]) id = 'home';
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('hidden', p.id !== id));
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.go === id));
+  try { history.replaceState(null, '', '#' + id); } catch (e) {}
+  safe(LOADERS[id])();
+}
+
+// ---------- сессия ----------
+function renderHeader() {
+  const m = S.me;
+  $('who').innerHTML = m
+    ? `<span>${esc(m.username)}</span>${m.is_premium ? '<span class="pill prem">Premium</span>' : ''}<button class="btn" type="button" id="logoutTop">Выйти</button>`
+    : '';
+  const b = $('logoutTop'); if (b) b.onclick = () => logout('Вы вышли из аккаунта.', 'info');
+}
+async function loadMe() {
+  if (!S.access) { S.me = null; renderHeader(); return; }
+  try { S.me = await req('/me/'); } catch (e) { S.me = null; if (e.status !== 401) fail(e); }
+  renderHeader();
+}
+function logout(text, type) {
+  S.access = S.refresh = null; S.me = null; LS.set('access', null); LS.set('refresh', null);
+  renderHeader();
+  if (text) toast(text, type || 'info');
+  const cur = (location.hash || '#home').slice(1);
+  if (cur === 'account') safe(loadAccount)(); else if (cur === 'db') safe(loadDb)();
+}
+async function doLogin(username, password) {
+  const r = await fetch(API + '/token/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new ApiError(r.status, { detail: d.detail === 'No active account found with the given credentials' ? 'Неверный логин или пароль.' : (d.detail || 'Не удалось войти.') });
+  S.access = d.access; S.refresh = d.refresh; LS.set('access', d.access); LS.set('refresh', d.refresh);
+  await loadMe();
+}
+$('loginForm').onsubmit = safe(async e => {
+  e.preventDefault();
+  if (!$('loginUser').value.trim() || !$('loginPass').value) return toast('Введите логин и пароль.', 'warn');
+  await doLogin($('loginUser').value.trim(), $('loginPass').value);
+  $('loginPass').value = '';
+  toast(`Добро пожаловать, ${S.me ? S.me.username : ''}!`, 'success');
+  loadAccount();
+});
+$('regForm').onsubmit = safe(async e => {
+  e.preventDefault();
+  const u = $('regUser').value.trim(), p = $('regPass').value;
+  await req('/register/', { method: 'POST', body: { username: u, email: $('regEmail').value.trim(), password: p, role: $('regRole').value } });
+  await doLogin(u, p);
+  $('regPass').value = '';
+  toast('Аккаунт создан, вы вошли в систему.', 'success');
+  loadAccount();
+});
+
+// ---------- платежи ----------
+async function loadPrices() {
+  if (!S.prices) { try { S.prices = await req('/payments/prices/'); } catch (e) { S.prices = {}; } }
+  return S.prices;
+}
+const priceOf = k => S.prices && S.prices[k] ? fmtMoney(S.prices[k].amount, S.prices[k].currency) : '';
+// возвращает платёж при успешной тестовой оплате; при реальном шлюзе уходит на страницу оплаты
+async function pay(purpose) {
+  const p = await req('/payments/checkout/', { method: 'POST', body: { purpose } });
+  if (p.gateway === 'stub') {
+    await req(`/payments/${p.id}/stub-pay/`, { method: 'POST', body: { access_token: p.access_token } });
+    return p;
+  }
+  if (purpose === 'calculator') saveCalcPay({ payment_id: p.id, access_token: p.access_token });
+  location.href = p.payment_url;
+  return null;
+}
+async function buy(purpose, title) {
+  await loadPrices();
+  if (!await askConfirm(`${title}: ${priceOf(purpose)}. Оплатить?`, 'Оплатить')) return null;
+  const p = await pay(purpose);
+  if (p) { toast(`${title}: оплачено.`, 'success'); await loadMe(); }
+  return p;
+}
+
+// ---------- страницы ----------
+async function loadHome() {
+  const [a, f, e] = await Promise.all(['/ads/', '/financing/', '/events/'].map(p => req(p).catch(() => null)));
+  const c = d => d ? (d.count != null ? d.count : rows(d).length) : '—';
+  $('homeCards').innerHTML = [[c(a), 'объявлений', 'ads'], [c(f), 'программ финансирования', 'financing'], [c(e), 'мероприятий', 'events']]
+    .map(([n, t, go]) => `<div class="card"><h3>${esc(n)}</h3><p>${t}</p><button class="btn" data-go="${go}">Открыть</button></div>`).join('');
+}
+async function loadAds() {
+  const t = $('adsType').value;
+  const d = await req('/ads/' + (t ? '?listing_type=' + encodeURIComponent(t) : ''));
+  $('adsList').innerHTML = rows(d).map(x => `<div class="card"><span class="pill ${x.listing_type !== 'request' ? 'ok' : ''}">${esc(LABEL.kind[x.listing_type] || 'Запрос')}</span><h3>${esc(x.title)}</h3><p>${esc(x.description)}</p><b>${fmtMoney(x.price)}</b><p class="muted small">${esc(x.author_name)} · ${fmtDate(x.created_at)}</p></div>`).join('') || '<p class="empty">Пока нет объявлений.</p>';
+}
+$('adsType').onchange = safe(loadAds);
+
+async function loadFinancing() {
+  const d = await req('/financing/');
+  $('financingList').innerHTML = rows(d).map(x => `<div class="card"><span class="pill">${esc(LABEL.fin[x.financing_type] || x.financing_type)}</span><h3>${esc(x.title)}</h3><p>${esc(x.description)}</p><p><b>${esc(x.amount_description)}</b></p><small class="muted">Дедлайн: ${fmtDate(x.deadline)}</small></div>`).join('') || '<p class="empty">Пока нет программ.</p>';
+}
+async function loadProviders() {
+  const d = await req('/provider-profiles/');
+  $('providersList').innerHTML = rows(d).map(x => {
+    const contacts = x.phone || x.email
+      ? `<p class="small">${x.manager_name ? esc(x.manager_name) + '<br>' : ''}${x.phone ? esc(x.phone) + '<br>' : ''}${x.email ? esc(x.email) : ''}</p>`
+      : '<p class="muted small">Контакты видны подписчикам Premium.</p>';
+    return `<div class="card"><h3>${esc(x.company_name)}</h3><p>${esc(x.activity)}</p><p>${esc(x.description)}</p><p class="muted">${esc(x.services_description)}</p>${contacts}</div>`;
+  }).join('') || '<p class="empty">Пока нет провайдеров.</p>';
+}
+async function loadEvents() {
+  const d = await req('/events/');
+  $('eventsList').innerHTML = rows(d).map(x => `<div class="card"><span class="pill">${esc(LABEL.ev[x.event_type] || x.event_type)}</span><h3>${esc(x.title)}</h3><p>${esc(x.description)}</p><p class="muted small">${fmtDate(x.date_and_time)} · ${esc(x.format)}${x.location ? ' · ' + esc(x.location) : ''}</p></div>`).join('') || '<p class="empty">Пока нет мероприятий.</p>';
+}
+async function loadForum() {
+  const d = await req('/forum/topics/');
+  $('forumList').innerHTML = rows(d).map(x => `<div class="card"><h3>${esc(x.title)}</h3><p class="muted small">${esc(LABEL.topic[x.topic_type] || x.topic_type)} · ${esc(x.author_name)} · ${fmtDate(x.created_at)}</p></div>`).join('') || '<p class="empty">Пока нет тем.</p>';
+}
+$('topicBtn').onclick = safe(async () => {
+  if (!S.access) return toast('Чтобы создать тему, войдите в аккаунт.', 'warn');
+  if (!$('topicTitle').value.trim()) return toast('Введите название темы.', 'warn');
+  await req('/forum/topics/', { method: 'POST', body: { title: $('topicTitle').value.trim(), topic_type: $('topicType').value } });
+  $('topicTitle').value = ''; toast('Тема создана.', 'success'); loadForum();
+});
+
+// ---------- базы данных ----------
+async function loadDb() {
+  const t = $('dbType').value;
+  const [d, q] = await Promise.all([
+    req('/database-resources/' + (t ? '?resource_type=' + encodeURIComponent(t) : '')),
+    isPremium() ? req('/database-resources/quota/').catch(() => null) : Promise.resolve(null),
+  ]);
+  let info;
+  if (!S.me) info = 'Войдите и оформите Premium, чтобы открывать проекты, бизнес-планы и другие закрытые материалы. Сейчас вам доступны только свободные материалы.';
+  else if (!isPremium()) info = 'Закрытые материалы доступны подписчикам Premium. Оформить подписку можно в разделе «Аккаунт».';
+  else if (q) info = `В подписке: проекты ${q.project.included_used}/${q.project.included_limit}, бизнес-планы ${q.business_plan.included_used}/${q.business_plan.included_limit}. Места из купленных пакетов: проекты ${q.project.pack_left}, бизнес-планы ${q.business_plan.pack_left}.`;
+  $('dbInfo').textContent = info || '';
+  $('dbList').innerHTML = rows(d).map(x => {
+    const quota = x.resource_type === 'project' || x.resource_type === 'business_plan';
+    let body;
+    if (x.content_available && x.file_or_content !== undefined) {
+      const c = String(x.file_or_content);
+      body = /^https?:\/\/\S+$/.test(c) ? `<div class="content"><a href="${esc(c)}" target="_blank" rel="noopener noreferrer">${esc(c)}</a></div>` : `<div class="content">${esc(c)}</div>`;
+    } else if (isPremium() && quota) body = `<button class="btn primary" data-unlock="${x.id}">Открыть</button>`;
+    else body = '<p class="muted small">Содержимое доступно подписчикам Premium.</p>';
+    return `<div class="card"><span class="pill">${esc(LABEL.res[x.resource_type] || x.resource_type)}</span><h3>${esc(x.title)}</h3><p class="muted small">${esc(x.sector)}</p>${body}</div>`;
+  }).join('') || '<p class="empty">Материалов пока нет.</p>';
+}
+$('dbType').onchange = safe(loadDb);
+$('dbList').addEventListener('click', safe(async e => {
+  const b = e.target.closest('[data-unlock]'); if (!b) return;
+  await unlock(b.dataset.unlock);
+}));
+async function unlock(id) {
+  try {
+    await req(`/database-resources/${id}/unlock/`, { method: 'POST' });
+    toast('Материал открыт.', 'success');
+    loadDb(); if (!$('account').classList.contains('hidden')) loadAccount();
+  } catch (e) {
+    if (e.status === 402 && e.data.purchase) {
+      await loadPrices();
+      toast(e.message, 'warn', { action: { label: `Купить пакет · ${fmtMoney(e.data.price, e.data.currency)}`, fn: safe(async () => { if (await buy(e.data.purchase, 'Пакет из ' + e.data.pack_size)) unlock(id); }) } });
+    } else fail(e);
+  }
+}
+
+// ---------- калькулятор ----------
+const loadCalcPay = () => { try { return JSON.parse(sessionStorage.getItem('calcPay') || 'null'); } catch (e) { return null; } };
+const saveCalcPay = v => { try { v ? sessionStorage.setItem('calcPay', JSON.stringify(v)) : sessionStorage.removeItem('calcPay'); } catch (e) {} };
+async function loadCalcInfo() {
+  await loadPrices();
+  $('calcPrice').textContent = isPremium() ? 'Для подписчиков Premium калькулятор бесплатный.' : `Один расчёт стоит ${priceOf('calculator')}. Для подписчиков Premium бесплатно.`;
+}
+async function calculate() {
+  const body = { annual_turnover: $('turnover').value, employees_count: $('employees').value, sector: $('sector').value, ...(loadCalcPay() || {}) };
+  try {
+    const x = await req('/calculator/', { method: 'POST', body });
+    saveCalcPay(null);
+    $('calcResult').innerHTML = `<h3>${esc(x.calculated_probability_percent)}%</h3><p>${esc(x.recommendation)}</p>`;
+  } catch (e) {
+    if (e.status === 402) {
+      saveCalcPay(null);
+      $('calcResult').innerHTML = `<p>${esc(e.message)}</p><p><b>${fmtMoney(e.data.price, e.data.currency)}</b> за один расчёт</p><button class="btn primary" id="calcPay">Оплатить</button>`;
+      $('calcPay').onclick = safe(payCalculator);
+    } else fail(e);
+  }
+}
+async function payCalculator() {
+  await loadPrices();
+  if (!await askConfirm(`Разовый расчёт: ${priceOf('calculator')}. Оплатить?`, 'Оплатить')) return;
+  const p = await pay('calculator');
+  if (!p) return;
+  saveCalcPay({ payment_id: p.id, access_token: p.access_token });
+  toast('Оплачено. Считаем…', 'success');
+  calculate();
+}
+$('calcBtn').onclick = safe(calculate);
+
+// ---------- аккаунт ----------
+async function loadAccount() {
+  await Promise.all([loadMe(), loadPrices()]);
+  const m = S.me;
+  $('guestBox').classList.toggle('hidden', !!m);
+  $('userBox').classList.toggle('hidden', !m);
+  if (!m) return;
+
+  const until = m.is_premium && m.role !== 'admin' ? (m.premium_until ? `до ${fmtDate(m.premium_until)}` : 'бессрочно') : '';
+  $('profileCard').innerHTML = `<h3>${esc(m.username)}</h3><p>${esc(m.first_name || '')} ${esc(m.last_name || '')} ${m.email ? '· ' + esc(m.email) : ''}</p>
+    <p><span class="pill">${esc(LABEL.role[m.role] || m.role)}</span>${m.is_premium ? `<span class="pill prem">Premium ${until}</span>` : '<span class="pill">Freemium</span>'}</p>
+    ${m.role === 'admin' ? '' : `<button class="btn primary" id="buyPremium">${m.is_premium ? 'Продлить Premium' : 'Оформить Premium'} · ${priceOf('premium')}</button>`}
+    <button class="btn" id="logoutBtn">Выйти</button>`;
+  $('logoutBtn').onclick = () => logout('Вы вышли из аккаунта.', 'info');
+  const bp = $('buyPremium'); if (bp) bp.onclick = safe(async () => { if (await buy('premium', 'Подписка Premium')) loadAccount(); });
+
+  await renderQuota();
+  const isClient = m.role === 'client' || m.role === 'admin';
+  $('adFormCard').classList.toggle('hidden', !isClient);
+  $('myAdsCard').classList.toggle('hidden', !isClient);
+  if (isClient) await renderMyAds();
+  await renderPayments();
+}
+async function renderQuota() {
+  if (!isPremium() || S.me.role === 'admin') {
+    $('quotaCard').innerHTML = `<h3>Базы данных</h3><p class="muted">${S.me.role === 'admin' ? 'Администратор видит все материалы без ограничений.' : 'Подписка Premium открывает 10 проектов и 10 бизнес-планов, а также позволяет докупать пакеты по 50.'}</p>`;
+    return;
+  }
+  const q = await req('/database-resources/quota/');
+  const block = (key, title) => {
+    const x = q[key], pct = Math.min(100, Math.round(x.included_used / x.included_limit * 100));
+    return `<div><b>${title}</b><div class="bar"><i style="width:${pct}%"></i></div>
+      <p class="small">В подписке: открыто ${x.included_used} из ${x.included_limit}. Из пакетов: ${x.pack_used} из ${x.pack_total}.</p>
+      <button class="btn" data-pack="${PACK[key]}" data-title="${title}">Докупить пакет ${x.pack_size} · ${priceOf(PACK[key])}</button></div>`;
+  };
+  $('quotaCard').innerHTML = `<h3>Мои лимиты</h3><div class="grid">${block('project', 'Проекты')}${block('business_plan', 'Бизнес-планы')}</div>
+    <button class="btn" data-go="db">Перейти к базам данных</button>`;
+}
+$('quotaCard').addEventListener('click', safe(async e => {
+  const b = e.target.closest('[data-pack]'); if (!b) return;
+  if (await buy(b.dataset.pack, 'Пакет из 50 · ' + b.dataset.title.toLowerCase())) renderQuota();
+}));
+
+async function renderMyAds() {
+  const d = await req('/ads/?author=' + S.me.id);
+  const list = rows(d);
+  $('myAds').innerHTML = list.map(x => `<div class="card" style="box-shadow:none;border:1px solid #e6eaf2;margin-bottom:10px">
+    <span class="pill">${esc(LABEL.kind[x.listing_type] || 'Запрос')}</span>${x.is_completed ? '<span class="pill ok">Сделка завершена</span>' : ''}${x.auto_bump ? '<span class="pill prem">Автоподнятие</span>' : ''}
+    <h3>${esc(x.title)}</h3><p class="muted small">${fmtMoney(x.price)} · ${fmtDate(x.created_at)}</p>
+    <button class="btn" data-bump="${x.id}">Поднять</button>
+    <button class="btn" data-auto="${x.id}" data-on="${x.auto_bump ? 0 : 1}">${x.auto_bump ? 'Выключить автоподнятие' : 'Включить автоподнятие'}</button>
+    ${x.is_completed ? '' : `<button class="btn" data-done="${x.id}">Сделка завершена</button>`}
+  </div>`).join('') || '<p class="empty">У вас пока нет объявлений.</p>';
+}
+$('myAds').addEventListener('click', safe(async e => {
+  const t = e.target.closest('button'); if (!t) return;
+  const premiumHint = err => {
+    if (err.status === 403 && !isPremium()) toast(err.message, 'warn', { action: { label: 'Оформить Premium', fn: safe(async () => { if (await buy('premium', 'Подписка Premium')) loadAccount(); }) } });
+    else fail(err);
+  };
+  try {
+    if (t.dataset.bump) { await req(`/ads/${t.dataset.bump}/bump/`, { method: 'POST' }); toast('Объявление поднято.', 'success'); }
+    else if (t.dataset.auto) { const on = t.dataset.on === '1'; await req(`/ads/${t.dataset.auto}/auto-bump/`, { method: 'POST', body: { enabled: on } }); toast(on ? 'Автоподнятие включено.' : 'Автоподнятие выключено.', 'success'); }
+    else if (t.dataset.done) {
+      if (!await askConfirm('Отметить сделку завершённой? Объявление будет удалено через 3 дня.', 'Завершить')) return;
+      await req(`/ads/${t.dataset.done}/complete/`, { method: 'POST', body: { keep_listing: false } }); toast('Сделка отмечена завершённой.', 'success');
+    } else return;
+    renderMyAds();
+  } catch (err) { premiumHint(err); }
+}));
+$('adCreateBtn').onclick = safe(async () => {
+  const title = $('adTitle').value.trim(), description = $('adDesc').value.trim(), price = $('adPrice').value;
+  if (!title || !description || price === '') return toast('Заполните заголовок, описание и цену.', 'warn');
+  await req('/ads/', { method: 'POST', body: { title, description, price, listing_type: $('adKind').value } });
+  $('adTitle').value = $('adDesc').value = $('adPrice').value = '';
+  toast('Объявление размещено.', 'success'); renderMyAds();
+});
+async function renderPayments() {
+  const list = rows(await req('/payments/'));
+  $('myPayments').innerHTML = list.length
+    ? `<table><tr><th>Дата</th><th>Что</th><th>Сумма</th><th>Статус</th></tr>${list.map(p => `<tr><td>${fmtDate(p.created_at)}</td><td>${esc(LABEL.purpose[p.purpose] || p.purpose)}</td><td>${fmtMoney(p.amount, p.currency)}</td><td>${esc(LABEL.pay[p.status] || p.status)}</td></tr>`).join('')}</table>`
+    : '<p class="empty">Платежей пока нет.</p>';
+}
+
+// ---------- старт ----------
+(async function init() {
+  await loadMe();
+  show((location.hash || '#home').slice(1));
+})();
+</script>
+{% endverbatim %}
+</body>
+</html>
