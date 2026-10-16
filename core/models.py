@@ -39,6 +39,10 @@ class User(AbstractUser):
     annual_turnover = models.CharField(max_length=50, choices=TURNOVER_CHOICES, blank=True, null=True, verbose_name='Примерный оборот за год')
     what_i_offer = models.TextField(blank=True, null=True, verbose_name='Я предлагаю (знания, навыки, технологии)')
     what_i_seek = models.TextField(blank=True, null=True, verbose_name='Я ищу (партнеры, инвесторы, консультации)')
+    consent_public_offer = models.BooleanField(
+        default=False,
+        verbose_name='Согласен, что «Я предлагаю» будет видно другим клиентам и консультантам',
+    )
 
     groups = models.ManyToManyField(
         'auth.Group',

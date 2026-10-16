@@ -4,6 +4,7 @@ from django.core.mail import send_mail
 from rest_framework import viewsets, generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
@@ -17,7 +18,7 @@ from rest_framework.views import APIView
 class AdViewSet(viewsets.ModelViewSet):
     queryset = Ad.objects.all().select_related('author', 'category').prefetch_related('photos')
     serializer_class = AdSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrAdmin]
+    permission_classes = [IsOwnerOrAdmin]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['category', 'author', 'is_completed', 'auto_bump']
     search_fields = ['title', 'description', 'what_i_offer_optional']
@@ -28,9 +29,18 @@ class AdViewSet(viewsets.ModelViewSet):
             raise PermissionDenied('Объявления клиентов могут размещать только клиенты.')
         serializer.save(author=self.request.user)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def retrieve(self, request, *args, **kwargs):
+        response = super().retrieve(request, *args, **kwargs)
+        AnalyticsEvent.objects.create(
+            event_type='click', user=request.user if request.user.is_authenticated else None,
+            object_type='ad', object_id=int(kwargs['pk']))
+        return response
+
+    @action(detail=True, methods=['post'], permission_classes=[AllowAny], throttle_classes=[AnonRateThrottle])
     def share(self, request, pk=None):
-        AnalyticsEvent.objects.create(event_type='share', user=request.user, object_type='ad', object_id=self.get_object().id)
+        AnalyticsEvent.objects.create(
+            event_type='share', user=request.user if request.user.is_authenticated else None,
+            object_type='ad', object_id=self.get_object().id, source=str(request.data.get('source', ''))[:100])
         return Response({'detail': 'Событие поделиться зарегистрировано.'})
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
@@ -66,6 +76,10 @@ class AdPhotoViewSet(viewsets.ModelViewSet):
         if ad.author != self.request.user and self.request.user.role != 'admin':
             raise PermissionDenied('Фото может загружать только владелец объявления.')
         serializer.save()
+    def perform_update(self, serializer):
+        if serializer.instance.ad.author != self.request.user and self.request.user.role != 'admin':
+            raise PermissionDenied('Менять фото может только владелец объявления.')
+        serializer.save()
     def perform_destroy(self, instance):
         if instance.ad.author != self.request.user and self.request.user.role != 'admin':
             raise PermissionDenied('Удалять фото может только владелец объявления.')
@@ -74,11 +88,10 @@ class AdPhotoViewSet(viewsets.ModelViewSet):
 
 class ProviderProfileViewSet(viewsets.ModelViewSet):
     serializer_class = ProviderProfileSerializer
-    def get_serializer_class(self):
-        if not self.request.user.is_authenticated:
-            return PublicProviderProfileSerializer
-        return ProviderProfileSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsProviderOwnerOrAdmin]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['activity']
+    search_fields = ['company_name', 'activity', 'description', 'services_description']
     def get_queryset(self):
         return ProviderProfile.objects.all().select_related('provider')
     def perform_create(self, serializer):
@@ -127,6 +140,10 @@ class ProviderServicePhotoViewSet(viewsets.ModelViewSet):
         if service.provider != self.request.user and self.request.user.role != 'admin':
             raise PermissionDenied('Фото может загружать только владелец услуги.')
         serializer.save()
+    def perform_update(self, serializer):
+        if serializer.instance.service.provider != self.request.user and self.request.user.role != 'admin':
+            raise PermissionDenied('Менять фото может только владелец услуги.')
+        serializer.save()
     def perform_destroy(self, instance):
         if instance.service.provider != self.request.user and self.request.user.role != 'admin':
             raise PermissionDenied('Удалять фото может только владелец услуги.')
@@ -170,6 +187,10 @@ class DatabaseResourceViewSet(viewsets.ModelViewSet):
 
 class ApplicationViewSet(viewsets.ModelViewSet):
     serializer_class = ApplicationSerializer
+    def get_serializer_class(self):
+        if self.action in ('update', 'partial_update'):
+            return ApplicationReviewSerializer
+        return ApplicationSerializer
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['status', 'provider_service', 'financing']
     ordering_fields = ['created_at']
@@ -187,12 +208,16 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         if user.role == 'admin' or (user.role == 'provider' and instance.provider_service and instance.provider_service.provider == user):
             serializer.save()
         else: raise PermissionDenied('Недостаточно прав.')
+    def perform_destroy(self, instance):
+        if self.request.user.role != 'admin' and instance.client != self.request.user:
+            raise PermissionDenied('Удалять заявку может только её автор или админ.')
+        instance.delete()
 
 
 class ForumTopicViewSet(viewsets.ModelViewSet):
     queryset = ForumTopic.objects.all().select_related('author').prefetch_related('posts')
     serializer_class = ForumTopicSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsOwnerOrAdmin]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['topic_type', 'is_closed']
     search_fields = ['title']
@@ -206,8 +231,10 @@ class ForumTopicViewSet(viewsets.ModelViewSet):
 class ForumPostViewSet(viewsets.ModelViewSet):
     queryset = ForumPost.objects.all().select_related('author', 'topic')
     serializer_class = ForumPostSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsOwnerOrAdmin]
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['topic', 'author']
+    ordering_fields = ['created_at']
     def perform_create(self, serializer):
         topic = serializer.validated_data['topic']
         if topic.is_closed: raise ValidationError('Тема закрыта.')
@@ -295,25 +322,22 @@ class MeView(APIView):
         serializer=UserSerializer(request.user,data=request.data,partial=True); serializer.is_valid(raise_exception=True); serializer.save(); return Response(serializer.data)
 
 
-class PremiumClientDirectoryView(APIView):
-    permission_classes=[IsAuthenticated]
-    def get(self, request):
-        if not request.user.is_premium_active(): raise PermissionDenied('Доступен только Premium.')
-        qs=User.objects.filter(role__in=['client','provider']).values('first_name','last_name','company_name','email','phone','region','business_sector','employees_count','what_i_offer','what_i_seek')
-        return Response(list(qs))
+class ClientDirectoryView(generics.ListAPIView):
+    """База данных МСБ. Что видно — решает ClientDirectorySerializer по статусу зрителя (ТЗ)."""
+    permission_classes = [AllowAny]
+    serializer_class = ClientDirectorySerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    filterset_fields = ['business_sector', 'region']
+    search_fields = ['what_i_offer', 'business_sector']
+
+    def get_queryset(self):
+        # в базе только клиенты, которые заполнили «я предлагаю» и дали согласие на публикацию
+        return (User.objects.filter(role='client', consent_public_offer=True, is_active=True)
+                .exclude(what_i_offer__isnull=True).exclude(what_i_offer='').order_by('-date_joined'))
 
 
-class ClientDirectoryView(APIView):
-    permission_classes=[IsAuthenticated]
-    def get(self, request):
-        qs=User.objects.filter(role='client')
-        data=[]
-        for u in qs:
-            item={'first_name':u.first_name,'last_name':u.last_name,'business_sector':u.business_sector,'what_i_offer':u.what_i_offer}
-            if request.user.is_premium_active():
-                item.update({'email':u.email,'phone':u.phone,'region':u.region,'employees_count':u.employees_count,'company_name':u.company_name,'what_i_seek':u.what_i_seek})
-            data.append(item)
-        return Response(data)
+# старый адрес оставлен для совместимости
+PremiumClientDirectoryView = ClientDirectoryView
 
 
 class PlatformAnalyticsView(APIView):
@@ -341,6 +365,14 @@ class PlatformAnalyticsView(APIView):
 
 class TrackAnalyticsView(APIView):
     permission_classes=[AllowAny]
+    throttle_classes=[AnonRateThrottle]
     def post(self, request):
-        AnalyticsEvent.objects.create(event_type=request.data.get('event_type','visit'), user=request.user if request.user.is_authenticated else None, object_type=request.data.get('object_type',''), object_id=request.data.get('object_id'), source=request.data.get('source',''))
+        event_type=request.data.get('event_type','visit')
+        if event_type not in dict(AnalyticsEvent.EVENT_CHOICES):
+            raise ValidationError({'event_type': 'Недопустимый тип события.'})
+        try:
+            object_id=int(request.data['object_id']) if request.data.get('object_id') not in (None,'') else None
+        except (TypeError, ValueError):
+            raise ValidationError({'object_id': 'Должно быть числом.'})
+        AnalyticsEvent.objects.create(event_type=event_type, user=request.user if request.user.is_authenticated else None, object_type=str(request.data.get('object_type',''))[:50], object_id=object_id, source=str(request.data.get('source',''))[:100])
         return Response({'tracked':True}, status=status.HTTP_201_CREATED)
