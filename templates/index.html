@@ -66,6 +66,9 @@ td,th{text-align:left;padding:8px 6px;border-bottom:1px solid #e6eaf2}
 label.check{display:flex;gap:8px;align-items:flex-start;color:var(--ink);font-size:14px}
 label.check input{width:auto;margin:3px 0 0}
 details.hints{margin:0 0 12px}details.hints summary{cursor:pointer;color:var(--brand)}details.hints li{cursor:pointer;margin:4px 0}
+.thumbs{margin:6px 0}.thumb{position:relative;display:inline-block}.thumb img{height:64px;border-radius:8px;margin:2px 4px 2px 0}
+.thumb button{position:absolute;top:4px;right:8px;border:0;border-radius:99px;background:#000a;color:#fff;cursor:pointer;width:20px;height:20px;line-height:18px;padding:0}
+h4{margin:14px 0 6px}
 @media(max-width:600px){
   #toasts{top:auto;bottom:14px;right:14px}
 }
@@ -161,6 +164,16 @@ details.hints{margin:0 0 12px}details.hints summary{cursor:pointer;color:var(--b
       <label for="adPhotos">Фото (до 5 шт., до 5 МБ каждое)</label><input id="adPhotos" type="file" accept="image/*" multiple>
       <button class="btn primary" id="adCreateBtn" type="button">Разместить</button></div>
     <div class="card hidden" id="myAdsCard"><h3>Мои объявления</h3><div id="myAds"></div></div>
+    <div id="providerBox" class="hidden">
+      <div class="card" id="provProfileCard"></div>
+      <form class="card hidden" id="provProfileForm"><h3>Профиль компании</h3><div id="provProfileFields"></div>
+        <button class="btn primary" type="submit">Сохранить</button><button class="btn" type="button" id="provProfileCancel">Отмена</button></form>
+      <div class="card"><h3>Мои услуги</h3><div id="myServices"></div><button class="btn primary" type="button" id="svcNew">Добавить услугу</button></div>
+      <form class="card hidden" id="svcForm"><h3 id="svcFormTitle">Новая услуга</h3><div id="svcFields"></div>
+        <button class="btn primary" type="submit">Сохранить услугу</button><button class="btn" type="button" id="svcCancel">Отмена</button></form>
+    </div>
+    <div class="card" id="crmCard"><h3 id="crmTitle">Заявки и сделки</h3><div id="crmSummary" class="muted small"></div>
+      <h4>Заявки</h4><div id="appsList"></div><h4>Сделки</h4><div id="dealsList"></div></div>
     <div class="card"><h3>Мои платежи</h3><div id="myPayments"></div></div>
   </div>
 </section>
@@ -190,7 +203,9 @@ const LABEL = {
     first_name: 'Имя', last_name: 'Фамилия', birth_year: 'Год рождения', company_name: 'Организация', phone: 'Телефон',
     website_or_social: 'Сайт или соцсети', region: 'Регион', business_sector: 'Сектор', employees_count: 'Число сотрудников',
     annual_turnover: 'Оборот', what_i_offer: 'Я предлагаю', what_i_seek: 'Я ищу', consent_public_offer: 'Согласие',
-    currency: 'Валюта', category: 'Категория', tags: 'Теги', image: 'Фото', role: 'Роль' },
+    currency: 'Валюта', category: 'Категория', tags: 'Теги', image: 'Фото', role: 'Роль',
+    activity: 'Сфера деятельности', founded_year: 'Год основания', manager_name: 'ФИО руководителя', services_description: 'Список услуг',
+    logo: 'Логотип', qr_code: 'QR-код', social_link: 'Соцсети', website: 'Сайт', address: 'Адрес', status: 'Статус', amount: 'Сумма' },
 };
 const PACK = { project: 'pack_project', business_plan: 'pack_business_plan' };
 
@@ -465,7 +480,7 @@ async function loadProviders() {
     const contacts = x.phone || x.email
       ? `<p class="small">${x.manager_name ? esc(x.manager_name) + '<br>' : ''}${x.phone ? esc(x.phone) + '<br>' : ''}${x.email ? esc(x.email) : ''}</p>`
       : '<p class="muted small">Контакты видны подписчикам Premium.</p>';
-    return `<div class="card link" data-open="provider/${x.id}"><h3>${esc(x.company_name)}</h3><p>${esc(x.activity)}</p><p>${esc(clip(x.description, 160))}</p><p class="muted">${esc(clip(x.services_description, 160))}</p>${contacts}<button class="btn" data-open="provider/${x.id}">Подробнее</button></div>`;
+    return `<div class="card link" data-open="provider/${x.id}">${logoImg(x.logo)}<h3>${esc(x.company_name)}</h3><p>${esc(x.activity)}</p><p>${esc(clip(x.description, 160))}</p><p class="muted">${esc(clip(x.services_description, 160))}</p>${contacts}<button class="btn" data-open="provider/${x.id}">Подробнее</button></div>`;
   }).join('') || '<p class="empty">Пока нет провайдеров.</p>';
 }
 async function loadEvents() {
@@ -580,6 +595,9 @@ async function loadAccount() {
   $('adFormCard').classList.toggle('hidden', !isClient);
   $('myAdsCard').classList.toggle('hidden', !isClient);
   if (isClient) { await loadAdFormData(); await renderMyAds(); }
+  $('providerBox').classList.toggle('hidden', m.role !== 'provider');
+  if (m.role === 'provider') await renderProviderBox();
+  await renderCrm();
   await renderPayments();
 }
 async function renderQuota() {
@@ -669,6 +687,165 @@ async function renderPayments() {
     : '<p class="empty">Платежей пока нет.</p>';
 }
 
+// ---------- кабинет провайдера ----------
+const MAX_FILE = 5 * 1024 * 1024;
+const tooBig = f => f && f.size > MAX_FILE;
+const field = (id, label, value, attrs = '') => `<label for="${id}">${label}</label><input id="${id}" value="${esc(value == null ? '' : value)}" ${attrs}>`;
+const logoImg = u => u ? imgTag(u).replace('<img ', '<img class="logo" ') : '';
+async function renderProviderBox() {
+  const list = rows(await req('/provider-profiles/?provider=' + S.me.id));
+  const p = S.prof = list[0] || null;
+  closeProvForm();
+  $('provProfileCard').innerHTML = p
+    ? `${logoImg(p.logo)}<h3>${esc(p.company_name)}</h3><p><span class="pill">${esc(p.activity)}</span></p><p class="small muted">${esc(clip(p.description, 200))}</p>
+       <button class="btn" type="button" id="provEdit">Редактировать профиль компании</button><button class="btn" type="button" data-open="provider/${p.id}">Как видят клиенты</button>`
+    : `<h3>Профиль компании</h3><p class="muted">Заполните профиль, чтобы клиенты нашли вас в разделе «Провайдеры».</p><button class="btn primary" type="button" id="provEdit">Заполнить профиль</button>`;
+  $('provEdit').onclick = openProvForm;
+  await renderMyServices();
+}
+function closeProvForm() { $('provProfileForm').classList.add('hidden'); $('provProfileCard').classList.remove('hidden'); }
+function openProvForm() {
+  const p = S.prof || {};
+  $('provProfileFields').innerHTML = `<div class="cols">${field('pp_company_name', 'Название компании *', p.company_name)}${field('pp_activity', 'Сфера деятельности *', p.activity)}${field('pp_founded_year', 'Год основания', p.founded_year, 'type="number" min="1800" max="2100"')}</div>
+    ${field('pp_manager_name', 'ФИО руководителя *', p.manager_name)}
+    <label for="pp_description">Краткое описание *</label><textarea id="pp_description" rows="3">${esc(p.description || '')}</textarea>
+    <label for="pp_services_description">Список предлагаемых услуг *</label><textarea id="pp_services_description" rows="3">${esc(p.services_description || '')}</textarea>
+    <div class="cols">${field('pp_phone', 'Телефон', p.phone)}${field('pp_email', 'Почта', p.email, 'type="email"')}${field('pp_address', 'Адрес (по желанию)', p.address)}</div>
+    <div class="cols">${field('pp_social_link', 'Ссылка на соцсети', p.social_link, 'type="url" placeholder="https://"')}${field('pp_website', 'Ссылка на сайт', p.website, 'type="url" placeholder="https://"')}</div>
+    <div class="cols"><div><label for="pp_logo">Логотип${p.logo ? ' (загружен, выберите файл для замены)' : ''}</label><input id="pp_logo" type="file" accept="image/*"></div>
+    <div><label for="pp_qr_code">QR-код${p.qr_code ? ' (загружен, выберите файл для замены)' : ''}</label><input id="pp_qr_code" type="file" accept="image/*"></div></div>`;
+  $('provProfileCard').classList.add('hidden'); $('provProfileForm').classList.remove('hidden');
+}
+$('provProfileCancel').onclick = closeProvForm;
+$('provProfileForm').onsubmit = safe(async e => {
+  e.preventDefault();
+  const g = k => $('pp_' + k).value.trim();
+  if (!g('company_name') || !g('activity') || !g('manager_name') || !g('description') || !g('services_description'))
+    return toast('Заполните обязательные поля, отмеченные звёздочкой.', 'warn');
+  const logo = $('pp_logo').files[0], qr = $('pp_qr_code').files[0];
+  if (tooBig(logo) || tooBig(qr)) return toast('Каждый файл должен быть не больше 5 МБ.', 'warn');
+  const fd = new FormData();
+  ['company_name', 'activity', 'manager_name', 'description', 'services_description', 'phone', 'email', 'address', 'social_link', 'website'].forEach(k => fd.append(k, g(k)));
+  if (g('founded_year')) fd.append('founded_year', g('founded_year'));
+  if (logo) fd.append('logo', logo);
+  if (qr) fd.append('qr_code', qr);
+  if (S.prof) await req(`/provider-profiles/${S.prof.id}/`, { method: 'PATCH', body: fd });
+  else await req('/provider-profiles/', { method: 'POST', body: fd });
+  toast('Профиль компании сохранён.', 'success');
+  await renderProviderBox();
+});
+
+async function renderMyServices() {
+  const list = S.svcs = rows(await req('/provider-services/?provider=' + S.me.id));
+  closeSvcForm();
+  $('myServices').innerHTML = list.map(x => `<div class="card" style="box-shadow:none;border:1px solid #e6eaf2;margin-bottom:10px">
+    ${logoImg(x.logo)}<h3>${esc(x.title)}</h3><p class="muted small">от ${fmtMoney(x.price, x.currency)} · ${fmtDate(x.created_at)}</p>${x.tags ? `<p>${tagPills(x.tags)}</p>` : ''}
+    <div class="thumbs">${(x.photos || []).map(ph => `<span class="thumb">${imgTag(ph.image)}<button type="button" data-delphoto="${ph.id}" aria-label="Удалить фото">×</button></span>`).join('')}</div>
+    <button class="btn" type="button" data-svcedit="${x.id}">Изменить</button><button class="btn danger" type="button" data-svcdel="${x.id}">Удалить</button></div>`).join('')
+    || '<p class="empty">Услуг пока нет. Добавьте первую: клиенты увидят её в вашем профиле.</p>';
+}
+function closeSvcForm() { S.editSvc = null; $('svcForm').classList.add('hidden'); }
+async function openSvcForm(id) {
+  if (!S.cats) { try { S.cats = rows(await req('/categories/')); } catch (e) { S.cats = []; } }
+  const x = id ? (S.svcs.find(v => v.id === id) || {}) : {};
+  S.editSvc = id || null;
+  $('svcFormTitle').textContent = id ? 'Изменить услугу' : 'Новая услуга';
+  $('svcFields').innerHTML = `${field('sv_title', 'Название *', x.title, 'maxlength="255"')}
+    <label for="sv_description">Описание *</label><textarea id="sv_description" rows="3">${esc(x.description || '')}</textarea>
+    <div class="cols"><div><label for="sv_category">Категория</label><select id="sv_category"><option value="">— без категории —</option>${S.cats.map(c => `<option value="${c.id}"${x.category === c.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div><label for="sv_price">Цена от *</label><input id="sv_price" type="number" min="0" step="any" value="${esc(x.price == null ? '' : x.price)}"></div>
+    <div><label for="sv_currency">Валюта</label><select id="sv_currency"><option value="KGS"${x.currency !== 'USD' ? ' selected' : ''}>Сом</option><option value="USD"${x.currency === 'USD' ? ' selected' : ''}>Доллар</option></select></div></div>
+    <div class="cols">${field('sv_phone', 'Телефон', x.phone)}${field('sv_email', 'Почта', x.email, 'type="email"')}${field('sv_address', 'Адрес (по желанию)', x.address)}</div>
+    ${field('sv_tags', 'Теги через запятую', x.tags, 'placeholder="бизнес-план, сайт, перевод"')}
+    <div class="cols"><div><label for="sv_logo">Логотип услуги</label><input id="sv_logo" type="file" accept="image/*"></div>
+    <div><label for="sv_photos">Фото (всего до 5, новые добавятся к текущим)</label><input id="sv_photos" type="file" accept="image/*" multiple></div></div>`;
+  $('svcForm').classList.remove('hidden');
+  $('svcForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+$('svcNew').onclick = safe(() => openSvcForm(null));
+$('svcCancel').onclick = closeSvcForm;
+$('svcForm').onsubmit = safe(async e => {
+  e.preventDefault();
+  const g = k => $('sv_' + k).value.trim();
+  if (!g('title') || !g('description') || g('price') === '') return toast('Заполните название, описание и цену.', 'warn');
+  const files = [...$('sv_photos').files], logo = $('sv_logo').files[0];
+  const have = S.editSvc ? ((S.svcs.find(v => v.id === S.editSvc) || {}).photos || []).length : 0;
+  if (have + files.length > 5) return toast(`Всего не больше 5 фото (сейчас ${have}).`, 'warn');
+  if (files.some(tooBig) || tooBig(logo)) return toast('Каждый файл должен быть не больше 5 МБ.', 'warn');
+  const fd = new FormData();
+  ['title', 'description', 'price', 'currency', 'phone', 'email', 'address', 'tags'].forEach(k => fd.append(k, g(k)));
+  if (g('category')) fd.append('category', g('category'));
+  if (logo) fd.append('logo', logo);
+  const btn = $('svcForm').querySelector('button[type=submit]'); btn.disabled = true;
+  try {
+    const svc = S.editSvc ? await req(`/provider-services/${S.editSvc}/`, { method: 'PATCH', body: fd })
+                          : await req('/provider-services/', { method: 'POST', body: fd });
+    let failed = 0;
+    for (const f of files) {
+      const pf = new FormData(); pf.append('service', svc.id); pf.append('image', f);
+      try { await req('/service-photos/', { method: 'POST', body: pf }); } catch (err) { failed++; }
+    }
+    toast(failed ? `Услуга сохранена, но ${failed} фото не загрузилось.` : 'Услуга сохранена.', failed ? 'warn' : 'success');
+    await renderMyServices();
+  } finally { btn.disabled = false; }
+});
+$('myServices').addEventListener('click', safe(async e => {
+  const t = e.target.closest('button'); if (!t) return;
+  const d = t.dataset;
+  if (d.svcedit) return openSvcForm(Number(d.svcedit));
+  if (d.svcdel) {
+    if (!await askConfirm('Удалить услугу вместе с фото?', 'Удалить')) return;
+    await req(`/provider-services/${d.svcdel}/`, { method: 'DELETE' }); toast('Услуга удалена.', 'success'); return renderMyServices();
+  }
+  if (d.delphoto) {
+    if (!await askConfirm('Удалить это фото?', 'Удалить')) return;
+    await req(`/service-photos/${d.delphoto}/`, { method: 'DELETE' }); return renderMyServices();
+  }
+}));
+
+// ---------- заявки и сделки (CRM) ----------
+const APP_ST = { pending: 'В рассмотрении', approved: 'Одобрено', rejected: 'Отклонено' };
+const DEAL_ST = { started: 'В работе', completed: 'Завершена', cancelled: 'Отменена' };
+async function renderCrm() {
+  const m = S.me, prov = m.role === 'provider', adm = m.role === 'admin';
+  const [apps, deals] = await Promise.all([fetchAll('/applications/'), fetchAll('/deals/')]);
+  $('crmTitle').textContent = prov ? 'Заявки и сделки (CRM)' : adm ? 'Все заявки и сделки' : 'Мои заявки и сделки';
+  const pend = apps.filter(a => a.status === 'pending').length;
+  $('crmSummary').textContent = `Заявок в рассмотрении: ${pend} · Сделок в работе: ${deals.filter(d => d.status === 'started').length} · Завершено: ${deals.filter(d => d.status === 'completed').length}`;
+  $('appsList').innerHTML = apps.map(a => {
+    const review = adm || (prov && a.provider_service);
+    return `<div class="post">${prov || adm ? `<b>${esc(a.client_name)}</b> → ` : ''}${esc(a.service_title || a.financing_title || '—')}
+      <span class="pill ${a.status === 'approved' ? 'ok' : ''}">${esc(APP_ST[a.status] || a.status)}</span>
+      <div class="muted small">${fmtDate(a.created_at)}</div>${a.message ? `<div class="content">${esc(a.message)}</div>` : ''}
+      ${review && a.status === 'pending' ? `<button class="btn" type="button" data-appst="${a.id}" data-st="approved">Одобрить</button><button class="btn" type="button" data-appst="${a.id}" data-st="rejected">Отклонить</button>` : ''}
+      ${review && a.provider_service && a.status !== 'rejected' ? `<button class="btn primary" type="button" data-appdeal="${a.id}">Создать сделку</button>` : ''}
+      ${review ? `<button class="btn" type="button" data-open="chat/${a.client}">Написать</button><button class="btn" type="button" data-open="user/${a.client}">Профиль клиента</button>` : ''}
+      ${!prov && !adm ? `<button class="btn danger" type="button" data-appdel="${a.id}">Отозвать</button>` : ''}</div>`;
+  }).join('') || '<p class="empty">Заявок пока нет.</p>';
+  $('dealsList').innerHTML = deals.map(d => {
+    const seller = adm || m.id === d.provider;
+    return `<div class="post"><b>${esc(d.title)}</b> · ${esc(m.id === d.provider ? d.client_name : d.provider_name)}
+      <span class="pill ${d.status === 'completed' ? 'ok' : ''}">${esc(DEAL_ST[d.status] || d.status)}</span>
+      <div class="muted small">${fmtDate(d.created_at)}${Number(d.amount) ? ' · сумма: ' + Number(d.amount).toLocaleString('ru-RU') : ''}${d.completed_at ? ' · завершена ' + fmtDate(d.completed_at) : ''}</div>
+      ${d.status === 'started' ? `${seller ? `<button class="btn" type="button" data-dealamt="${d.id}" data-cur="${esc(d.amount)}">Указать сумму</button>` : ''}<button class="btn primary" type="button" data-dealdone="${d.id}">Завершить</button><button class="btn danger" type="button" data-dealcancel="${d.id}">Отменить</button>` : ''}</div>`;
+  }).join('') || '<p class="empty">Сделок пока нет.</p>';
+}
+$('crmCard').addEventListener('click', safe(async e => {
+  const t = e.target.closest('button'); if (!t) return;
+  const d = t.dataset;
+  if (d.appst) { await req(`/applications/${d.appst}/`, { method: 'PATCH', body: { status: d.st } }); toast(d.st === 'approved' ? 'Заявка одобрена.' : 'Заявка отклонена.', 'success'); }
+  else if (d.appdeal) { await req(`/applications/${d.appdeal}/create-deal/`, { method: 'POST', body: {} }); toast('Сделка создана. Сумму можно уточнить в списке сделок.', 'success'); }
+  else if (d.appdel) { if (!await askConfirm('Отозвать заявку?', 'Отозвать')) return; await req(`/applications/${d.appdel}/`, { method: 'DELETE' }); toast('Заявка отозвана.', 'success'); }
+  else if (d.dealamt) {
+    const v = prompt('Сумма сделки', Number(d.cur) || ''); if (v === null) return;
+    await req(`/deals/${d.dealamt}/amount/`, { method: 'POST', body: { amount: v.replace(',', '.').trim() } }); toast('Сумма сохранена.', 'success');
+  }
+  else if (d.dealdone) { if (!await askConfirm('Завершить сделку?', 'Завершить')) return; await req(`/deals/${d.dealdone}/complete/`, { method: 'POST' }); toast('Сделка завершена.', 'success'); }
+  else if (d.dealcancel) { if (!await askConfirm('Отменить сделку?', 'Отменить')) return; await req(`/deals/${d.dealcancel}/cancel/`, { method: 'POST' }); toast('Сделка отменена.', 'success'); }
+  else return;
+  await renderCrm();
+}));
+
 // ---------- страницы подробностей, профиль, сообщения ----------
 const DETAIL = {
   ad: ['ads', renderAd], topic: ['forum', renderTopic], fin: ['financing', renderFin],
@@ -725,7 +902,8 @@ async function renderAd(id, seq) {
       ${photos ? `<div class="photos">${photos}</div>` : ''}
       <p class="muted small">Автор: ${esc(x.author_name)} · ${fmtDate(x.created_at)}</p>
       <button class="btn" type="button" data-open="user/${x.author}">Профиль автора</button>
-      ${mine ? '<button class="btn" type="button" data-go="account">Мои объявления</button>' : ''}</div>
+      ${mine ? '<button class="btn" type="button" data-go="account">Мои объявления</button>' : ''}
+      ${S.me && S.me.role === 'provider' && !mine ? `<button class="btn primary" type="button" data-addeal="${x.id}">Открыть сделку по объявлению</button>` : ''}</div>
     ${mine ? '<div class="card"><p class="muted">Это ваше объявление.</p></div>' : composeBox(x.author, x.id)}`);
 }
 
@@ -773,7 +951,7 @@ async function renderProvider(id, seq) {
     ? `<div class="kv"><b>Контакты</b>${x.manager_name ? esc(x.manager_name) + '<br>' : ''}${x.phone ? esc(x.phone) + '<br>' : ''}${x.email ? esc(x.email) + '<br>' : ''}${x.address ? esc(x.address) : ''}</div>`
     : '<p class="muted small">Контакты видны подписчикам Premium. Написать провайдеру можно и здесь, через сообщения.</p>';
   const canApply = !!S.me && S.me.role === 'client';
-  const services = svc.map(v => `<div class="post"><b>${esc(v.title)}</b> · от ${fmtMoney(v.price, v.currency)}<div class="content">${esc(v.description)}</div>
+  const services = svc.map(v => `<div class="post">${logoImg(v.logo)}<b>${esc(v.title)}</b> · от ${fmtMoney(v.price, v.currency)}${v.tags ? `<p>${tagPills(v.tags)}</p>` : ''}<div class="content">${esc(v.description)}</div>${(v.photos || []).length ? `<div class="photos">${v.photos.map(ph => imgTag(ph.image)).join('')}</div>` : ''}
     ${canApply ? `<button class="btn" type="button" data-svc="${v.id}" data-title="${esc(v.title)}">Оставить заявку</button>` : ''}</div>`).join('') || '<p class="empty">Услуг пока нет.</p>';
   setDetail(seq, `${backBtn('providers', 'К провайдерам')}
     <div class="card">${x.logo ? imgTag(x.logo).replace('<img ', '<img class="logo" ') : ''}<h2>${esc(x.company_name)}</h2>
@@ -878,6 +1056,10 @@ $('detailBody').addEventListener('click', safe(async e => {
     t.disabled = true;
     try { await req('/applications/', { method: 'POST', body }); toast('Заявка отправлена.', 'success'); $('applyText').value = ''; }
     finally { t.disabled = false; }
+  } else if (t.dataset.addeal) {
+    if (!await askConfirm('Открыть сделку по этому объявлению? Клиент увидит её в своём кабинете.', 'Открыть')) return;
+    await req('/deals/', { method: 'POST', body: { ad: Number(t.dataset.addeal) } });
+    toast('Сделка открыта. Управлять ею можно в кабинете.', 'success');
   } else if (t.dataset.svc) {
     if (!await askConfirm(`Отправить заявку на услугу «${t.dataset.title}»?`, 'Отправить')) return;
     await req('/applications/', { method: 'POST', body: { provider_service: Number(t.dataset.svc) } });

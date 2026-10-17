@@ -32,6 +32,21 @@ def normalize_tags(value):
     return ','.join(tags)
 
 
+MAX_IMAGE_MB = 5
+
+
+def validate_image_size(f):
+    if f is not None and getattr(f, 'size', 0) > MAX_IMAGE_MB * 1024 * 1024:
+        raise serializers.ValidationError(f'Файл больше {MAX_IMAGE_MB} МБ.')
+    return f
+
+
+def display_name(user):
+    if not user:
+        return ''
+    return user.company_name or f'{user.first_name} {user.last_name}'.strip() or user.username
+
+
 class TagsMixin:
     def validate_tags(self, value):
         return normalize_tags(value)
@@ -142,6 +157,17 @@ class ProviderProfileSerializer(serializers.ModelSerializer):
         fields = '__all__'
         extra_kwargs = {'provider': {'required': False}}
 
+    def validate_founded_year(self, value):
+        if value is not None and not (1800 <= value <= timezone.now().year):
+            raise serializers.ValidationError('Укажите корректный год основания.')
+        return value
+
+    def validate_logo(self, f):
+        return validate_image_size(f)
+
+    def validate_qr_code(self, f):
+        return validate_image_size(f)
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
         request = self.context.get('request')
@@ -166,6 +192,9 @@ class AdPhotoSerializer(serializers.ModelSerializer):
         model = AdPhoto
         fields = '__all__'
         read_only_fields = ['created_at']
+
+    def validate_image(self, f):
+        return validate_image_size(f)
 
     def validate_ad(self, ad):
         if self.instance and ad != self.instance.ad:
@@ -193,6 +222,9 @@ class ProviderServicePhotoSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['created_at']
 
+    def validate_image(self, f):
+        return validate_image_size(f)
+
     def validate_service(self, service):
         if self.instance and service != self.instance.service:
             raise serializers.ValidationError('Нельзя переносить фото в другую услугу.')
@@ -206,6 +238,9 @@ class ProviderServiceSerializer(TagsMixin, serializers.ModelSerializer):
         model = ProviderService
         fields = '__all__'
         read_only_fields = ['provider', 'created_at']
+
+    def validate_logo(self, f):
+        return validate_image_size(f)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -251,10 +286,23 @@ class DatabaseResourceSerializer(serializers.ModelSerializer):
 
 
 class ApplicationSerializer(serializers.ModelSerializer):
+    client_name = serializers.SerializerMethodField()
+    service_title = serializers.SerializerMethodField()
+    financing_title = serializers.SerializerMethodField()
+
     class Meta:
         model = Application
         fields = '__all__'
         read_only_fields = ['client', 'status', 'created_at']
+
+    def get_client_name(self, obj):
+        return display_name(obj.client)
+
+    def get_service_title(self, obj):
+        return obj.provider_service.title if obj.provider_service_id else ''
+
+    def get_financing_title(self, obj):
+        return obj.financing.title if obj.financing_id else ''
 
     def validate(self, attrs):
         if self.instance is None and bool(attrs.get('provider_service')) == bool(attrs.get('financing')):
@@ -262,12 +310,10 @@ class ApplicationSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ApplicationReviewSerializer(serializers.ModelSerializer):
+class ApplicationReviewSerializer(ApplicationSerializer):
     """Used by provider/admin: only the status may be changed."""
 
-    class Meta:
-        model = Application
-        fields = '__all__'
+    class Meta(ApplicationSerializer.Meta):
         read_only_fields = ['client', 'provider_service', 'financing', 'message', 'created_at']
 
 
@@ -313,10 +359,26 @@ class PaymentTransactionSerializer(serializers.ModelSerializer):
 
 
 class DealSerializer(serializers.ModelSerializer):
+    title = serializers.SerializerMethodField()
+    client_name = serializers.SerializerMethodField()
+    provider_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Deal
         fields = '__all__'
-        read_only_fields = ['client', 'provider', 'created_at', 'completed_at', 'status']
+        # сумму задаёт только провайдер отдельным действием /deals/{id}/amount/
+        read_only_fields = ['client', 'provider', 'created_at', 'completed_at', 'status', 'amount']
+
+    def get_title(self, obj):
+        if obj.provider_service_id:
+            return obj.provider_service.title
+        return obj.ad.title if obj.ad_id else ''
+
+    def get_client_name(self, obj):
+        return display_name(obj.client)
+
+    def get_provider_name(self, obj):
+        return display_name(obj.provider)
 
     def validate(self, attrs):
         if not attrs.get('ad') and not attrs.get('provider_service'):

@@ -137,6 +137,8 @@ class AdPhotoViewSet(viewsets.ModelViewSet):
         ad = serializer.validated_data['ad']
         if ad.author != self.request.user and self.request.user.role != 'admin':
             raise PermissionDenied('Фото может загружать только владелец объявления.')
+        if ad.photos.count() >= 5:
+            raise ValidationError('Не больше 5 фото в объявлении.')
         serializer.save()
     def perform_update(self, serializer):
         if serializer.instance.ad.author != self.request.user and self.request.user.role != 'admin':
@@ -152,7 +154,7 @@ class ProviderProfileViewSet(viewsets.ModelViewSet):
     serializer_class = ProviderProfileSerializer
     permission_classes = [IsProviderOwnerOrAdmin]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['activity']
+    filterset_fields = ['activity', 'provider']
     search_fields = ['company_name', 'activity', 'description', 'services_description']
     def get_queryset(self):
         return ProviderProfile.objects.all().select_related('provider')
@@ -201,6 +203,8 @@ class ProviderServicePhotoViewSet(viewsets.ModelViewSet):
         service = serializer.validated_data['service']
         if service.provider != self.request.user and self.request.user.role != 'admin':
             raise PermissionDenied('Фото может загружать только владелец услуги.')
+        if service.photos.count() >= 5:
+            raise ValidationError('Не больше 5 фото в услуге.')
         serializer.save()
     def perform_update(self, serializer):
         if serializer.instance.service.provider != self.request.user and self.request.user.role != 'admin':
@@ -282,10 +286,11 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     ordering_fields = ['created_at']
     def get_queryset(self):
         user = self.request.user
+        base = Application.objects.select_related('client', 'provider_service', 'financing')
         if not user.is_authenticated: return Application.objects.none()
-        if user.role == 'admin': return Application.objects.all()
-        if user.role == 'provider': return Application.objects.filter(provider_service__provider=user)
-        return Application.objects.filter(client=user)
+        if user.role == 'admin': return base
+        if user.role == 'provider': return base.filter(provider_service__provider=user)
+        return base.filter(client=user)
     def perform_create(self, serializer):
         if self.request.user.role != 'client': raise PermissionDenied('Заявки создают клиенты.')
         serializer.save(client=self.request.user)
@@ -298,6 +303,33 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         if self.request.user.role != 'admin' and instance.client != self.request.user:
             raise PermissionDenied('Удалять заявку может только её автор или админ.')
         instance.delete()
+
+    @action(detail=True, methods=['post'], url_path='create-deal')
+    def create_deal(self, request, pk=None):
+        """CRM: провайдер превращает заявку на свою услугу в сделку (сумма по умолчанию — цена услуги)."""
+        app = self.get_object()
+        svc = app.provider_service
+        if svc is None:
+            raise ValidationError('Сделку можно создать только по заявке на услугу.')
+        if request.user.role != 'admin' and svc.provider != request.user:
+            raise PermissionDenied('Недостаточно прав.')
+        if app.status == 'rejected':
+            raise ValidationError('Заявка отклонена: сначала одобрите её.')
+        try:
+            amount = Decimal(str(request.data.get('amount', svc.price)))
+        except (InvalidOperation, ValueError):
+            raise ValidationError({'amount': 'Некорректная сумма.'})
+        if amount < 0:
+            raise ValidationError({'amount': 'Сумма не может быть отрицательной.'})
+        deal = Deal.objects.filter(provider_service=svc, client=app.client, status='started').first()
+        created = deal is None
+        if created:
+            deal = Deal.objects.create(provider_service=svc, client=app.client, provider=svc.provider, amount=amount)
+        if app.status == 'pending':
+            app.status = 'approved'
+            app.save(update_fields=['status'])
+        return Response(DealSerializer(deal, context={'request': request}).data,
+                        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
 class ForumTopicViewSet(viewsets.ModelViewSet):
@@ -447,31 +479,79 @@ class PayboxWebhookView(APIView):
         return self._handle(request)
 
 
-class DealViewSet(viewsets.ModelViewSet):
+class DealViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """Сделки. Менять и удалять напрямую нельзя: только действия complete / cancel / amount."""
     serializer_class = DealSerializer
     permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ['status']
+    ordering_fields = ['created_at']
+    ordering = ['-created_at']
+
     def get_queryset(self):
-        u=self.request.user
-        if u.role=='admin': return Deal.objects.all()
-        return Deal.objects.filter(Q(client=u)|Q(provider=u)).distinct()
+        u = self.request.user
+        qs = Deal.objects.select_related('ad', 'provider_service', 'client', 'provider')
+        if u.role == 'admin':
+            return qs
+        return qs.filter(Q(client=u) | Q(provider=u))
+
     def perform_create(self, serializer):
         data = serializer.validated_data
-        service = data.get('provider_service')
-        ad = data.get('ad')
+        service, ad, user = data.get('provider_service'), data.get('ad'), self.request.user
         if service:
-            provider=service.provider
-            if provider == self.request.user: raise ValidationError('Нельзя создать сделку с собой.')
-            serializer.save(client=self.request.user, provider=provider)
+            if user.role != 'client':
+                raise PermissionDenied('Сделку по услуге открывает клиент.')
+            if Deal.objects.filter(client=user, provider_service=service, status='started').exists():
+                raise ValidationError('Сделка по этой услуге уже открыта.')
+            serializer.save(client=user, provider=service.provider)
         else:
-            if ad.author == self.request.user: raise ValidationError('Нельзя создать сделку с собой.')
-            if self.request.user.role != 'provider': raise PermissionDenied('Для сделки по объявлению нужен провайдер.')
-            serializer.save(client=ad.author, provider=self.request.user)
+            if user.role != 'provider':
+                raise PermissionDenied('Для сделки по объявлению нужен провайдер.')
+            if Deal.objects.filter(ad=ad, provider=user, status='started').exists():
+                raise ValidationError('Сделка по этому объявлению уже открыта.')
+            serializer.save(client=ad.author, provider=user)
+
+    @staticmethod
+    def _open(deal):
+        if deal.status != 'started':
+            raise ValidationError('Сделка уже завершена или отменена.')
+
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
-        deal=self.get_object()
-        deal.status='completed'; deal.completed_at=timezone.now(); deal.save(update_fields=['status','completed_at'])
-        if deal.ad: deal.ad.is_completed=True; deal.ad.completion_requested_at=timezone.now(); deal.ad.save(update_fields=['is_completed','completion_requested_at'])
-        return Response(DealSerializer(deal).data)
+        deal = self.get_object()
+        self._open(deal)
+        deal.status = 'completed'
+        deal.completed_at = timezone.now()
+        deal.save(update_fields=['status', 'completed_at'])
+        if deal.ad:
+            deal.ad.is_completed = True
+            deal.ad.completion_requested_at = timezone.now()
+            deal.ad.save(update_fields=['is_completed', 'completion_requested_at'])
+        return Response(DealSerializer(deal, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        deal = self.get_object()
+        self._open(deal)
+        deal.status = 'cancelled'
+        deal.save(update_fields=['status'])
+        return Response(DealSerializer(deal, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='amount')
+    def set_amount(self, request, pk=None):
+        deal = self.get_object()
+        if request.user.role != 'admin' and deal.provider != request.user:
+            raise PermissionDenied('Сумму сделки указывает провайдер.')
+        self._open(deal)
+        try:
+            amount = Decimal(str(request.data.get('amount')))
+        except (InvalidOperation, ValueError):
+            raise ValidationError({'amount': 'Некорректная сумма.'})
+        if amount < 0:
+            raise ValidationError({'amount': 'Сумма не может быть отрицательной.'})
+        deal.amount = amount
+        deal.save(update_fields=['amount'])
+        return Response(DealSerializer(deal, context={'request': request}).data)
 
 
 class GrantProbabilityCalculatorView(APIView):
