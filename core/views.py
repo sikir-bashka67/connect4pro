@@ -571,6 +571,13 @@ class GrantProbabilityCalculatorView(APIView):
         except (TypeError, ValueError):
             raise ValidationError({'employees_count': 'Должно быть неотрицательным целым числом.'})
         sector = str(request.data.get('sector', 'general'))[:150]
+        financing = None
+        fid = request.data.get('financing')
+        if fid not in (None, ''):
+            try:
+                financing = Financing.objects.get(pk=int(fid))
+            except (TypeError, ValueError, Financing.DoesNotExist):
+                raise ValidationError({'financing': 'Программа финансирования не найдена.'})
 
         user = request.user
         if not (user.is_authenticated and user.is_premium_active()):
@@ -584,12 +591,27 @@ class GrantProbabilityCalculatorView(APIView):
             score += 25
         elif turnover in ['up_to_1m', 'up_to_500k']:
             score += 10
+        recommendation = None
+        if financing is not None:
+            # расчёт под конкретную программу: совпадение сектора, тип программы, срок подачи заявок
+            program_sector = (financing.sector or '').strip().lower()
+            own_sector = sector.strip().lower()
+            if program_sector and own_sector and own_sector != 'general':
+                score += 10 if (program_sector in own_sector or own_sector in program_sector) else -10
+            if financing.financing_type == 'investment' and turnover in ['up_to_5m', 'up_to_10m', 'over_10m']:
+                score += 5
+            score = max(5, score)
         probability = min(score, 95)
-        return Response({
-            'sector': sector,
-            'calculated_probability_percent': probability,
-            'recommendation': 'Рекомендуем доработать бизнес-план с помощью наших провайдеров.' if probability <= 70 else 'У вас высокий расчетный показатель.',
-        })
+        if financing is not None and financing.deadline and financing.deadline < timezone.localdate():
+            probability = min(probability, 5)
+            recommendation = 'Срок подачи заявок по этой программе истёк.'
+        if recommendation is None:
+            recommendation = ('Рекомендуем доработать бизнес-план с помощью наших провайдеров.' if probability <= 70
+                              else 'У вас высокий расчетный показатель.')
+        result = {'sector': sector, 'calculated_probability_percent': probability, 'recommendation': recommendation}
+        if financing is not None:
+            result['financing'] = {'id': financing.id, 'title': financing.title}
+        return Response(result)
 
 
 class RegisterView(generics.CreateAPIView):
@@ -650,6 +672,7 @@ class PlatformAnalyticsView(APIView):
             'forum_topics':ForumTopic.objects.count(),'forum_posts':ForumPost.objects.count(),'shares':AnalyticsEvent.objects.filter(event_type='share').count(),
             'traffic_sources':list(AnalyticsEvent.objects.filter(event_type='traffic').values('source').annotate(count=Count('id')).order_by('-count')),
             'most_clicked_ad':top,
+            'most_clicked_ad_title': (Ad.objects.filter(pk=top['object_id']).values_list('title', flat=True).first() if top else None),
             'users_by_region':list(User.objects.values('region').annotate(count=Count('id')).order_by('-count')),
             'users_by_turnover':list(User.objects.values('annual_turnover').annotate(count=Count('id')).order_by('-count')),
             'users_by_employees':list(User.objects.values('employees_count').annotate(count=Count('id')).order_by('-count')),

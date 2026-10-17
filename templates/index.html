@@ -69,6 +69,18 @@ details.hints{margin:0 0 12px}details.hints summary{cursor:pointer;color:var(--b
 .thumbs{margin:6px 0}.thumb{position:relative;display:inline-block}.thumb img{height:64px;border-radius:8px;margin:2px 4px 2px 0}
 .thumb button{position:absolute;top:4px;right:8px;border:0;border-radius:99px;background:#000a;color:#fff;cursor:pointer;width:20px;height:20px;line-height:18px;padding:0}
 h4{margin:14px 0 6px}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:0 12px;align-items:end}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.pill.tag{cursor:pointer}.pill.tag:hover{background:#dbe4ff}
+.slider{margin:0 0 18px}.sl-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}.sl-head h3{margin:0}
+.track{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;padding:4px 2px 10px}
+.track>.card{flex:0 0 min(290px,80%);scroll-snap-align:start}
+.track>.empty{margin:8px 0}
+.share{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.stat{font-size:26px;font-weight:bold;margin:4px 0}
+table.t{width:100%;border-collapse:collapse;font-size:14px}table.t td,table.t th{padding:6px 8px;border-bottom:1px solid #e6eaf2;text-align:left}
+footer.site{background:var(--dark);color:#cfd6e4;padding:28px 5%;margin-top:30px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;font-size:14px}
+footer.site h4{color:#fff;margin:0 0 8px}footer.site a,footer.site button{color:#cfd6e4;background:none;border:0;padding:3px 0;display:block;cursor:pointer;text-align:left;text-decoration:underline;font:inherit}
 @media(max-width:600px){
   #toasts{top:auto;bottom:14px;right:14px}
 }
@@ -85,31 +97,74 @@ h4{margin:14px 0 6px}
 
 <main>
 <section id="home" class="page">
-  <div class="hero"><h1>Возможности для бизнеса в одном месте</h1><p>Гранты, инвестиции, провайдеры услуг, мероприятия, объявления и бизнес-сообщество.</p><button class="btn primary" data-go="ads">Смотреть объявления</button></div>
+  <div class="hero"><h1>Возможности для бизнеса в одном месте</h1><p>Гранты, инвестиции, провайдеры услуг, мероприятия, объявления и бизнес-сообщество.</p><button class="btn primary" data-go="ads">Смотреть объявления</button><button class="btn" data-go="account">Регистрация и вход</button></div>
+  <div id="homeSliders"></div>
   <div class="grid" id="homeCards"></div>
 </section>
 
 <section id="ads" class="page hidden">
   <h2>Объявления</h2>
-  <div class="card"><label for="adsType">Показать</label>
-    <select id="adsType"><option value="">Все объявления</option><option value="request">Запросы услуг</option><option value="sell_share">Продажа доли</option><option value="buy_share">Покупка доли</option></select></div>
+  <div class="card filters">
+    <div><label for="adsQ">Поиск (название, описание, теги)</label><input id="adsQ" placeholder="Например: бизнес-план"></div>
+    <div><label for="adsType">Показать</label>
+      <select id="adsType"><option value="">Все объявления</option><option value="request">Запросы услуг</option><option value="sell_share">Продажа доли</option><option value="buy_share">Покупка доли</option></select></div>
+    <div><label for="adsCat">Категория</label><select id="adsCat"><option value="">Все категории</option></select></div>
+    <div><label for="adsSort">Порядок</label>
+      <select id="adsSort"><option value="">Сначала приоритетные и новые</option><option value="-created_at">Сначала новые</option><option value="price">Цена: по возрастанию</option><option value="-price">Цена: по убыванию</option></select></div>
+  </div>
   <div id="adsList" class="grid"></div>
 </section>
 
 <section id="db" class="page hidden">
   <h2>Базы данных</h2>
   <div class="card" id="dbInfo"></div>
-  <div class="card"><label for="dbType">Тип материалов</label>
-    <select id="dbType"><option value="">Все</option><option value="project">Проекты</option><option value="business_plan">Бизнес-планы</option><option value="case">Кейсы</option><option value="donor">Доноры</option><option value="investor">Инвесторы</option><option value="franchise">Франчайзинг</option><option value="sme">МСБ</option></select></div>
+  <div class="card"><button class="btn primary" type="button" data-go="sme">База МСБ (клиенты платформы)</button></div>
+  <div class="card filters"><div><label for="dbQ">Поиск</label><input id="dbQ" placeholder="Название или сектор"></div><div><label for="dbType">Тип материалов</label>
+    <select id="dbType"><option value="">Все</option><option value="project">Проекты</option><option value="business_plan">Бизнес-планы</option><option value="case">Кейсы</option><option value="donor">Доноры</option><option value="investor">Инвесторы</option><option value="franchise">Франчайзинг</option><option value="sme">МСБ</option></select></div></div>
   <div id="dbList" class="grid"></div>
 </section>
 
-<section id="financing" class="page hidden"><h2>Гранты и инвестиции</h2><div id="financingList" class="grid"></div></section>
-<section id="providers" class="page hidden"><h2>Провайдеры</h2><div id="providersList" class="grid"></div></section>
-<section id="events" class="page hidden"><h2>Мероприятия</h2><div id="eventsList" class="grid"></div></section>
+<section id="financing" class="page hidden"><h2>Финансирование</h2>
+  <div class="tabs" id="finTabs"><button class="btn primary" type="button" data-fintab="">Все</button><button class="btn" type="button" data-fintab="grant">Гранты</button><button class="btn" type="button" data-fintab="investment">Инвестиции</button></div>
+  <div class="card filters">
+    <div><label for="finQ">Поиск (название, сектор, теги)</label><input id="finQ" placeholder="Например: сельское хозяйство"></div>
+    <div><label for="finSort">Порядок</label><select id="finSort"><option value="-created_at">Сначала новые</option><option value="deadline">Ближайший срок подачи</option></select></div>
+  </div>
+  <div id="financingList" class="grid"></div></section>
+<section id="providers" class="page hidden"><h2>Провайдеры</h2>
+  <div class="card"><label for="provQ">Поиск (название, сфера, услуги)</label><input id="provQ" placeholder="Например: юридические услуги"></div>
+  <div id="providersList" class="grid"></div></section>
+<section id="events" class="page hidden"><h2>Мероприятия</h2>
+  <div class="card filters">
+    <div><label for="evQ">Поиск (название, сектор, теги)</label><input id="evQ" placeholder="Например: экспорт"></div>
+    <div><label for="evType">Тип</label><select id="evType"><option value="">Все типы</option><option value="training">Тренинг / курс</option><option value="conference">Конференция</option><option value="internship">Стажировка</option><option value="b2b">B2B ивент</option></select></div>
+  </div>
+  <div id="eventsList" class="grid"></div></section>
+
+<section id="sme" class="page hidden"><h2>База МСБ</h2>
+  <p class="muted" id="smeInfo"></p>
+  <div class="card"><label for="smeQ">Поиск по «Я предлагаю» и сектору</label><input id="smeQ" placeholder="Например: бухгалтерия"></div>
+  <div id="smeList" class="grid"></div></section>
+
+<section id="analytics" class="page hidden"><h2>Аналитика платформы</h2><div id="analyticsBody"></div></section>
+
+<section id="about" class="page hidden"><h2>О нас</h2>
+  <div class="card"><p>Connect4Pro — онлайн-платформа для малого и среднего бизнеса. Она помогает находить гранты и инвестиции, подбирать провайдеров услуг, участвовать в мероприятиях и общаться с предпринимателями.</p>
+    <h3>Что здесь есть</h3>
+    <ul><li>Объявления: запросы услуг, продажа и покупка доли в бизнесе.</li><li>Гранты и инвестиции с описанием, суммой и сроком подачи.</li><li>Провайдеры: консультанты и исполнители с услугами и портфолио.</li><li>Мероприятия: тренинги, конференции, стажировки, B2B-встречи.</li><li>Базы данных: проекты, бизнес-планы, кейсы, доноры, инвесторы, франчайзинг и база МСБ.</li><li>Форум и личные сообщения.</li></ul>
+    <h3>Premium</h3><p>Подписка открывает контакты провайдеров и клиентов, базы данных, автоподнятие объявлений и бесплатный калькулятор вероятности.</p>
+    <button class="btn primary" type="button" data-go="account">Регистрация и вход</button></div></section>
+
+<section id="contacts" class="page hidden"><h2>Контакты</h2><div class="card" id="contactsBody"></div></section>
 
 <section id="forum" class="page hidden">
-  <h2>Форум</h2><div id="forumList" class="grid"></div>
+  <h2>Форум</h2>
+  <div id="forumChats"></div>
+  <div class="card filters">
+    <div><label for="forumQ">Поиск по темам</label><input id="forumQ" placeholder="Название темы"></div>
+    <div><label for="forumSection">Раздел</label><select id="forumSection"><option value="">Все разделы</option><option value="general">Общие вопросы</option><option value="grants">Гранты</option><option value="investments">Инвестиции</option><option value="business_sale">Купля-продажа бизнеса</option><option value="legal">Юридические вопросы</option></select></div>
+  </div>
+  <div id="forumList" class="grid"></div>
   <div class="card"><h3>Новая тема</h3>
     <input id="topicTitle" placeholder="Название темы" aria-label="Название темы">
     <select id="topicType" aria-label="Раздел"><option value="general">Общие вопросы</option><option value="grants">Гранты</option><option value="investments">Инвестиции</option><option value="business_sale">Купля-продажа бизнеса</option><option value="legal">Юридические вопросы</option></select>
@@ -124,6 +179,8 @@ h4{margin:14px 0 6px}
   <h2>Калькулятор вероятности</h2>
   <div class="card">
     <p class="muted small" id="calcPrice"></p>
+    <label for="calcFin">Программа финансирования (необязательно)</label>
+    <select id="calcFin"><option value="">Общий расчёт</option></select>
     <label for="turnover">Оборот</label>
     <select id="turnover"><option value="up_to_100k">до 100 000</option><option value="up_to_500k">до 500 000</option><option value="up_to_1m">до 1 млн</option><option value="up_to_5m">до 5 млн</option><option value="up_to_10m">до 10 млн</option><option value="over_10m">более 10 млн</option></select>
     <label for="employees">Сотрудники</label><input id="employees" type="number" min="0" value="5">
@@ -178,6 +235,7 @@ h4{margin:14px 0 6px}
   </div>
 </section>
 </main>
+<footer class="site" id="siteFooter"></footer>
 
 {% verbatim %}
 <script>
@@ -205,9 +263,15 @@ const LABEL = {
     annual_turnover: 'Оборот', what_i_offer: 'Я предлагаю', what_i_seek: 'Я ищу', consent_public_offer: 'Согласие',
     currency: 'Валюта', category: 'Категория', tags: 'Теги', image: 'Фото', role: 'Роль',
     activity: 'Сфера деятельности', founded_year: 'Год основания', manager_name: 'ФИО руководителя', services_description: 'Список услуг',
-    logo: 'Логотип', qr_code: 'QR-код', social_link: 'Соцсети', website: 'Сайт', address: 'Адрес', status: 'Статус', amount: 'Сумма' },
+    logo: 'Логотип', financing: 'Программа', qr_code: 'QR-код', social_link: 'Соцсети', website: 'Сайт', address: 'Адрес', status: 'Статус', amount: 'Сумма' },
 };
 const PACK = { project: 'pack_project', business_plan: 'pack_business_plan' };
+
+// Заполните: контакты и ссылки на чаты сообщества. Пустые поля на сайте не показываются.
+const SITE = {
+  email: '', phone: '', address: '',
+  chats: [ /* { name: 'Telegram', url: 'https://t.me/...' }, { name: 'WhatsApp', url: 'https://chat.whatsapp.com/...' } */ ],
+};
 
 // ---------- утилиты ----------
 function esc(v) {
@@ -215,7 +279,11 @@ function esc(v) {
 }
 const fmtDate = s => s ? new Date(s).toLocaleDateString('ru-RU') : '—';
 const fmtMoney = (a, c) => `${Number(a).toLocaleString('ru-RU')} ${c === 'USD' ? '$' : (c === 'KGS' || !c ? 'сом' : c)}`;
-const tagPills = t => t ? String(t).split(',').filter(Boolean).map(x => `<span class="pill">#${esc(x)}</span>`).join('') : '';
+// page — раздел, в котором поиск по клику на тег (ads / financing / events); без него тег просто подпись
+const tagPills = (t, page) => t ? String(t).split(',').filter(Boolean).map(x => page
+  ? `<span class="pill tag" data-tag="${esc(x)}" data-tagpage="${page}" title="Найти по тегу">#${esc(x)}</span>` : `<span class="pill">#${esc(x)}</span>`).join('') : '';
+const qs = o => { const a = Object.entries(o).filter(([, v]) => v !== '' && v != null).map(([k, v]) => k + '=' + encodeURIComponent(v)); return a.length ? '?' + a.join('&') : ''; };
+const debounced = (fn, ms = 350) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 const rows = d => (d && d.results) ? d.results : (Array.isArray(d) ? d : []);
 const clip = (v, n) => { v = String(v == null ? '' : v); return v.length > n ? v.slice(0, n).trimEnd() + '…' : v; };
 const fmtTime = s => s ? new Date(s).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
@@ -300,18 +368,33 @@ const fail = e => { if (!e.silent) toast(e.message || 'Что-то пошло н
 const safe = fn => async (...a) => { try { return await fn(...a); } catch (e) { fail(e); } };
 
 // ---------- навигация ----------
-const PAGES = [['home', 'Главная'], ['ads', 'Объявления'], ['db', 'Базы данных'], ['financing', 'Финансирование'], ['providers', 'Провайдеры'], ['events', 'Мероприятия'], ['forum', 'Форум'], ['calculator', 'Калькулятор'], ['inbox', 'Сообщения'], ['account', 'Аккаунт']];
-$('nav').innerHTML = PAGES.map(([id, t]) => `<button type="button" data-go="${id}">${t}</button>`).join('');
+const PAGES = [['home', 'Главная'], ['ads', 'Объявления'], ['financing', 'Финансирование'], ['providers', 'Провайдеры'], ['events', 'Мероприятия'], ['db', 'Базы данных'], ['forum', 'Форум'], ['calculator', 'Калькулятор'], ['about', 'О нас'], ['contacts', 'Контакты'], ['inbox', 'Сообщения'], ['account', 'Аккаунт']];
+const NAV_PARENT = { sme: 'db' };
+function buildNav() {
+  const pages = PAGES.slice(); // «Аналитика» видна только администратору
+  if (S.me && S.me.role === 'admin') pages.splice(pages.length - 1, 0, ['analytics', 'Аналитика']);
+  $('nav').innerHTML = pages.map(([id, t]) => `<button type="button" data-go="${id}">${t}</button>`).join('');
+  markNav(S.navActive);
+}
 document.addEventListener('click', e => {
-  const b = e.target.closest('[data-go]'); if (b) return navigate(b.dataset.go);
+  const tg = e.target.closest('[data-tag][data-tagpage]');
+  if (tg) { const pg = tg.dataset.tagpage; $({ ads: 'adsQ', financing: 'finQ', events: 'evQ' }[pg]).value = tg.dataset.tag; if (pg === 'financing') S.finTab = ''; return navigate(pg); }
+  const sl = e.target.closest('[data-slide]');
+  if (sl) { const t = $(sl.dataset.target); t.scrollBy({ left: Number(sl.dataset.slide) * t.clientWidth * 0.8, behavior: 'smooth' }); return; }
+  const mo = e.target.closest('[data-more]'); if (mo) { safe(morePaged)(mo.dataset.more); return; }
+  const ft = e.target.closest('[data-fintab]'); if (ft) { S.finTab = ft.dataset.fintab; safe(loadFinancing)(); return; }
+  const sh = e.target.closest('[data-share]'); if (sh) { safe(doShare)(sh); return; }
+  const cf = e.target.closest('[data-calcfin]'); if (cf) { S.calcFin = Number(cf.dataset.calcfin); return navigate('calculator'); }
+  const b = e.target.closest('[data-go]');
+  if (b) { if (b.dataset.fin !== undefined) S.finTab = b.dataset.fin; return navigate(b.dataset.go); }
   if (e.target.closest('[data-back]')) return history.length > 1 ? history.back() : navigate('home');
   // клик по карточке или кнопке «Подробнее» открывает страницу подробностей
   const o = e.target.closest('[data-open]');
   if (o) { const inner = e.target.closest('button,a,input,select,textarea'); if (!inner || inner === o) navigate(o.dataset.open); }
 });
 
-const LOADERS = { home: loadHome, ads: loadAds, db: loadDb, financing: loadFinancing, providers: loadProviders, events: loadEvents, forum: loadForum, calculator: loadCalcInfo, inbox: loadInbox, account: loadAccount };
-const markNav = id => document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.go === id));
+const LOADERS = { home: loadHome, ads: loadAds, db: loadDb, financing: loadFinancing, providers: loadProviders, events: loadEvents, forum: loadForum, calculator: loadCalcInfo, inbox: loadInbox, account: loadAccount, sme: loadSme, analytics: loadAnalytics, about: () => {}, contacts: loadContacts };
+const markNav = id => { S.navActive = NAV_PARENT[id] || id; document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.go === S.navActive)); };
 function show(id) {
   if (!LOADERS[id]) id = 'home';
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('hidden', p.id !== id));
@@ -332,7 +415,7 @@ function route(keepScroll) {
     document.querySelectorAll('.page').forEach(p => p.classList.toggle('hidden', p.id !== 'detail'));
     markNav(parent);
     if (!keepScroll) $('detailBody').innerHTML = '<p class="empty">Загрузка…</p>';
-    runDetail(fn, Number(m[2]), seq);
+    runDetail(fn, Number(m[2]), seq, m[1]);
   } else show(h);
 }
 window.addEventListener('hashchange', () => route());
@@ -340,6 +423,7 @@ window.addEventListener('hashchange', () => route());
 // ---------- сессия ----------
 function renderHeader() {
   const m = S.me;
+  buildNav();
   $('who').innerHTML = m
     ? `<span>${esc(m.username)}</span>${m.is_premium ? '<span class="pill prem">Premium</span>' : ''}<button class="btn" type="button" id="logoutTop">Выйти</button>`
     : '';
@@ -456,41 +540,111 @@ async function buy(purpose, title) {
   return p;
 }
 
+// ---------- списки с поиском, фильтрами и «Показать ещё» ----------
+const PAGED = {};
+async function loadPaged(boxId, path, card, empty) {
+  const st = PAGED[boxId] = { path, card, empty, page: 1 };
+  $(boxId).innerHTML = '<p class="empty">Загрузка…</p>';
+  await morePaged(boxId);
+}
+async function morePaged(boxId) {
+  const st = PAGED[boxId]; if (!st) return;
+  const d = await req(st.path + (st.path.includes('?') ? '&' : '?') + 'page=' + st.page);
+  if (PAGED[boxId] !== st) return; // пока грузилось, фильтр уже сменили
+  const box = $(boxId), items = rows(d);
+  const wrap = box.querySelector('.moreWrap'); if (wrap) wrap.remove();
+  if (st.page === 1) box.innerHTML = '';
+  if (st.page === 1 && !items.length) { box.innerHTML = `<p class="empty">${st.empty}</p>`; return; }
+  box.insertAdjacentHTML('beforeend', items.map(st.card).join(''));
+  if (d && d.next) { st.page++; box.insertAdjacentHTML('beforeend', `<div class="moreWrap" style="grid-column:1/-1"><button class="btn" type="button" data-more="${boxId}">Показать ещё</button></div>`); }
+}
+
 // ---------- страницы ----------
+const LATEST = n => `?page_size=${n}`;
+function slider(id, title, items, card, empty, goTo) {
+  return `<div class="slider"><div class="sl-head"><h3>${title}</h3><div>${goTo ? `<button class="btn" type="button" data-go="${goTo}">Все</button>` : ''}<button class="btn" type="button" data-slide="-1" data-target="${id}" aria-label="Назад">‹</button><button class="btn" type="button" data-slide="1" data-target="${id}" aria-label="Вперёд">›</button></div></div>
+    <div class="track" id="${id}">${items.length ? items.map(card).join('') : `<p class="empty">${empty}</p>`}</div></div>`;
+}
+const adCard = x => `<div class="card link" data-open="ad/${x.id}"><span class="pill ${x.listing_type !== 'request' ? 'ok' : ''}">${esc(LABEL.kind[x.listing_type] || 'Запрос')}</span><h3>${esc(x.title)}</h3><p>${esc(clip(x.description, 160))}</p><b>${fmtMoney(x.price, x.currency)}</b>${x.tags ? `<p>${tagPills(x.tags, 'ads')}</p>` : ''}<p class="muted small">${esc(x.author_name)} · ${fmtDate(x.created_at)}</p><button class="btn" data-open="ad/${x.id}">Подробнее</button></div>`;
+const finCard = x => `<div class="card link" data-open="fin/${x.id}"><span class="pill">${esc(LABEL.fin[x.financing_type] || x.financing_type)}</span><h3>${esc(x.title)}</h3><p>${esc(clip(x.description, 160))}</p><p><b>${esc(x.amount_description)}</b></p>${x.tags ? `<p>${tagPills(x.tags, 'financing')}</p>` : ''}<small class="muted">Дедлайн: ${fmtDate(x.deadline)}</small><p><button class="btn" data-open="fin/${x.id}">Подробнее</button></p></div>`;
+const evCard = x => `<div class="card link" data-open="event/${x.id}"><span class="pill">${esc(LABEL.ev[x.event_type] || x.event_type)}</span><h3>${esc(x.title)}</h3><p>${esc(clip(x.description, 160))}</p>${x.tags ? `<p>${tagPills(x.tags, 'events')}</p>` : ''}<p class="muted small">${fmtDate(x.date_and_time)} · ${esc(x.format)}${x.location ? ' · ' + esc(x.location) : ''}</p><button class="btn" data-open="event/${x.id}">Подробнее</button></div>`;
+const provCard = x => {
+  const contacts = x.phone || x.email
+    ? `<p class="small">${x.manager_name ? esc(x.manager_name) + '<br>' : ''}${x.phone ? esc(x.phone) + '<br>' : ''}${x.email ? esc(x.email) : ''}</p>`
+    : '<p class="muted small">Контакты видны подписчикам Premium.</p>';
+  return `<div class="card link" data-open="provider/${x.id}">${logoImg(x.logo)}<h3>${esc(x.company_name)}</h3><p>${esc(x.activity)}</p><p>${esc(clip(x.description, 160))}</p><p class="muted">${esc(clip(x.services_description, 160))}</p>${contacts}<button class="btn" data-open="provider/${x.id}">Подробнее</button></div>`;
+};
+const topicCard = x => `<div class="card link" data-open="topic/${x.id}"><h3>${esc(x.title)}${x.is_closed ? ' <span class="pill">закрыта</span>' : ''}</h3><p class="muted small">${esc(LABEL.topic[x.topic_type] || x.topic_type)} · ${esc(x.author_name)} · ${fmtDate(x.created_at)}</p><button class="btn" data-open="topic/${x.id}">Открыть тему</button></div>`;
+const smeName = x => x.company_name || [x.first_name, x.last_name].filter(Boolean).join(' ') || ('Предприниматель №' + x.id);
+const smeCard = x => `<div class="card link" data-open="user/${x.id}"><h3>${esc(smeName(x))}</h3>${x.business_sector ? `<span class="pill">${esc(x.business_sector)}</span>` : ''}${x.region ? `<span class="pill">${esc(x.region)}</span>` : ''}
+  ${x.what_i_offer ? `<div class="kv"><b>Я предлагаю</b>${esc(x.what_i_offer)}</div>` : ''}${x.what_i_seek ? `<div class="kv"><b>Я ищу</b>${esc(x.what_i_seek)}</div>` : ''}
+  ${x.employees_count != null ? `<p class="muted small">Сотрудников: ${esc(x.employees_count)}</p>` : ''}${x.phone || x.email ? `<p class="small">${x.phone ? esc(x.phone) + '<br>' : ''}${x.email ? esc(x.email) : ''}</p>` : ''}
+  <button class="btn" data-open="user/${x.id}">Профиль</button></div>`;
+
 async function loadHome() {
-  const [a, f, e] = await Promise.all(['/ads/', '/financing/', '/events/'].map(p => req(p).catch(() => null)));
-  const c = d => d ? (d.count != null ? d.count : rows(d).length) : '—';
-  $('homeCards').innerHTML = [[c(a), 'объявлений', 'ads'], [c(f), 'программ финансирования', 'financing'], [c(e), 'мероприятий', 'events']]
-    .map(([n, t, go]) => `<div class="card"><h3>${esc(n)}</h3><p>${t}</p><button class="btn" data-go="${go}">Открыть</button></div>`).join('');
+  const get = p => req(p).catch(() => null);
+  const [ads, svc, gr, inv, prov, ev, forum] = await Promise.all([
+    get('/ads/?is_completed=false'), get('/provider-services/'), get('/financing/?financing_type=grant'), get('/financing/?financing_type=investment'),
+    get('/provider-profiles/'), get('/events/'), get('/forum/topics/')]);
+  const cnt = d => d ? (d.count != null ? d.count : rows(d).length) : '—';
+  const top = (d, n = 10) => rows(d).slice(0, n);
+  const svcCard = x => `<div class="card link" data-open="user/${x.provider}">${logoImg(x.logo)}<h3>${esc(clip(x.title, 60))}</h3><p>${esc(clip(x.description, 90))}</p><b>от ${fmtMoney(x.price, x.currency)}</b></div>`;
+  const small = (c, t) => x => c(x).replace(/<button class="btn"[^>]*>[^<]*<\/button>/g, '');
+  $('homeSliders').innerHTML =
+    slider('slAds', 'Объявления', top(ads), small(adCard), 'Пока нет объявлений.', 'ads') +
+    slider('slSvc', 'Услуги и предложения провайдеров', top(svc), svcCard, 'Пока нет предложений.', 'providers') +
+    slider('slGr', 'Гранты', top(gr), small(finCard), 'Пока нет грантов.', 'financing') +
+    slider('slInv', 'Инвестиции', top(inv), small(finCard), 'Пока нет инвестиционных программ.', 'financing') +
+    slider('slProv', 'Провайдеры', top(prov), x => `<div class="card link" data-open="provider/${x.id}">${logoImg(x.logo)}<h3>${esc(x.company_name)}</h3><p>${esc(x.activity)}</p><p class="muted small">${esc(clip(x.services_description, 90))}</p></div>`, 'Пока нет провайдеров.', 'providers') +
+    slider('slEv', 'Мероприятия', top(ev), small(evCard), 'Пока нет мероприятий.', 'events') +
+    slider('slForum', 'Новое на форуме', top(forum), small(topicCard), 'Пока нет тем.', 'forum');
+  const tile = (n, t, go, fin) => `<div class="card"><div class="stat">${esc(n)}</div><p>${t}</p><button class="btn" data-go="${go}"${fin !== undefined ? ` data-fin="${fin}"` : ''}>Открыть</button></div>`;
+  $('homeCards').innerHTML = tile(cnt(ads), 'объявлений', 'ads') + tile(cnt(gr), 'грантов', 'financing', 'grant') + tile(cnt(inv), 'инвестиционных программ', 'financing', 'investment')
+    + tile(cnt(ev), 'мероприятий', 'events') + tile(cnt(prov), 'провайдеров', 'providers')
+    + `<div class="card"><h3>Premium</h3><p>Контакты, базы данных, автоподнятие, бесплатный калькулятор.</p><button class="btn primary" data-go="account">Подробнее</button></div>`;
+}
+
+async function fillCats() {
+  if (S.cats) return;
+  try {
+    S.cats = await fetchAll('/categories/');
+    $('adsCat').insertAdjacentHTML('beforeend', S.cats.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join(''));
+  } catch (e) { S.cats = []; }
 }
 async function loadAds() {
-  const t = $('adsType').value;
-  const d = await req('/ads/' + (t ? '?listing_type=' + encodeURIComponent(t) : ''));
-  $('adsList').innerHTML = rows(d).map(x => `<div class="card link" data-open="ad/${x.id}"><span class="pill ${x.listing_type !== 'request' ? 'ok' : ''}">${esc(LABEL.kind[x.listing_type] || 'Запрос')}</span><h3>${esc(x.title)}</h3><p>${esc(clip(x.description, 160))}</p><b>${fmtMoney(x.price, x.currency)}</b><p class="muted small">${esc(x.author_name)} · ${fmtDate(x.created_at)}</p><button class="btn" data-open="ad/${x.id}">Подробнее</button></div>`).join('') || '<p class="empty">Пока нет объявлений.</p>';
+  await fillCats();
+  await loadPaged('adsList', '/ads/' + qs({ listing_type: $('adsType').value, category: $('adsCat').value, search: $('adsQ').value.trim(), ordering: $('adsSort').value, is_completed: 'false' }),
+    adCard, 'По вашему запросу объявлений нет.');
 }
-$('adsType').onchange = safe(loadAds);
+['adsType', 'adsCat', 'adsSort'].forEach(id => { $(id).onchange = safe(loadAds); });
+$('adsQ').oninput = debounced(safe(loadAds));
 
 async function loadFinancing() {
-  const d = await req('/financing/');
-  $('financingList').innerHTML = rows(d).map(x => `<div class="card link" data-open="fin/${x.id}"><span class="pill">${esc(LABEL.fin[x.financing_type] || x.financing_type)}</span><h3>${esc(x.title)}</h3><p>${esc(clip(x.description, 160))}</p><p><b>${esc(x.amount_description)}</b></p><small class="muted">Дедлайн: ${fmtDate(x.deadline)}</small><p><button class="btn" data-open="fin/${x.id}">Подробнее</button></p></div>`).join('') || '<p class="empty">Пока нет программ.</p>';
+  document.querySelectorAll('#finTabs [data-fintab]').forEach(b => b.classList.toggle('primary', b.dataset.fintab === (S.finTab || '')));
+  await loadPaged('financingList', '/financing/' + qs({ financing_type: S.finTab || '', search: $('finQ').value.trim(), ordering: $('finSort').value }),
+    finCard, 'По вашему запросу программ нет.');
 }
+$('finSort').onchange = safe(loadFinancing);
+$('finQ').oninput = debounced(safe(loadFinancing));
+
 async function loadProviders() {
-  const d = await req('/provider-profiles/');
-  $('providersList').innerHTML = rows(d).map(x => {
-    const contacts = x.phone || x.email
-      ? `<p class="small">${x.manager_name ? esc(x.manager_name) + '<br>' : ''}${x.phone ? esc(x.phone) + '<br>' : ''}${x.email ? esc(x.email) : ''}</p>`
-      : '<p class="muted small">Контакты видны подписчикам Premium.</p>';
-    return `<div class="card link" data-open="provider/${x.id}">${logoImg(x.logo)}<h3>${esc(x.company_name)}</h3><p>${esc(x.activity)}</p><p>${esc(clip(x.description, 160))}</p><p class="muted">${esc(clip(x.services_description, 160))}</p>${contacts}<button class="btn" data-open="provider/${x.id}">Подробнее</button></div>`;
-  }).join('') || '<p class="empty">Пока нет провайдеров.</p>';
+  await loadPaged('providersList', '/provider-profiles/' + qs({ search: $('provQ').value.trim() }), provCard, 'Провайдеров по вашему запросу нет.');
 }
+$('provQ').oninput = debounced(safe(loadProviders));
+
 async function loadEvents() {
-  const d = await req('/events/');
-  $('eventsList').innerHTML = rows(d).map(x => `<div class="card link" data-open="event/${x.id}"><span class="pill">${esc(LABEL.ev[x.event_type] || x.event_type)}</span><h3>${esc(x.title)}</h3><p>${esc(clip(x.description, 160))}</p><p class="muted small">${fmtDate(x.date_and_time)} · ${esc(x.format)}${x.location ? ' · ' + esc(x.location) : ''}</p><button class="btn" data-open="event/${x.id}">Подробнее</button></div>`).join('') || '<p class="empty">Пока нет мероприятий.</p>';
+  await loadPaged('eventsList', '/events/' + qs({ event_type: $('evType').value, search: $('evQ').value.trim() }), evCard, 'Мероприятий по вашему запросу нет.');
 }
+$('evType').onchange = safe(loadEvents);
+$('evQ').oninput = debounced(safe(loadEvents));
+
 async function loadForum() {
-  const d = await req('/forum/topics/');
-  $('forumList').innerHTML = rows(d).map(x => `<div class="card link" data-open="topic/${x.id}"><h3>${esc(x.title)}${x.is_closed ? ' <span class="pill">закрыта</span>' : ''}</h3><p class="muted small">${esc(LABEL.topic[x.topic_type] || x.topic_type)} · ${esc(x.author_name)} · ${fmtDate(x.created_at)}</p><button class="btn" data-open="topic/${x.id}">Открыть тему</button></div>`).join('') || '<p class="empty">Пока нет тем.</p>';
+  const chats = (SITE.chats || []).filter(c => c && /^https?:\/\//.test(c.url));
+  $('forumChats').innerHTML = chats.length ? `<div class="card"><b>Чаты сообщества</b> ${chats.map(c => `<a class="btn" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${esc(c.name)}</a>`).join('')}</div>` : '';
+  await loadPaged('forumList', '/forum/topics/' + qs({ topic_type: $('forumSection').value, search: $('forumQ').value.trim() }), topicCard, 'Тем по вашему запросу нет.');
 }
+$('forumSection').onchange = safe(loadForum);
+$('forumQ').oninput = debounced(safe(loadForum));
 $('topicBtn').onclick = safe(async () => {
   if (!S.access) return toast('Чтобы создать тему, войдите в аккаунт.', 'warn');
   if (!$('topicTitle').value.trim()) return toast('Введите название темы.', 'warn');
@@ -498,11 +652,61 @@ $('topicBtn').onclick = safe(async () => {
   $('topicTitle').value = ''; toast('Тема создана.', 'success'); loadForum();
 });
 
+// ---------- база МСБ ----------
+async function loadSme() {
+  $('smeInfo').textContent = !S.me ? 'Гость видит только «Я предлагаю». Войдите, чтобы видеть сектор, а подписчики Premium видят контакты и «Я ищу».'
+    : !isPremium() ? 'Контакты и «Я ищу» видны подписчикам Premium.' : 'Показаны контакты и «Я ищу» тех, кто разрешил их публиковать.';
+  await loadPaged('smeList', '/clients/directory/' + qs({ search: $('smeQ').value.trim() }), smeCard, 'В базе пока никого нет.');
+}
+$('smeQ').oninput = debounced(safe(loadSme));
+
+// ---------- контакты ----------
+function loadContacts() {
+  const items = [['Почта', SITE.email ? `<a href="mailto:${esc(SITE.email)}">${esc(SITE.email)}</a>` : ''], ['Телефон', SITE.phone ? esc(SITE.phone) : ''], ['Адрес', SITE.address ? esc(SITE.address) : '']]
+    .filter(([, v]) => v).map(([k, v]) => `<div class="kv"><b>${k}</b>${v}</div>`).join('');
+  $('contactsBody').innerHTML = (items || '<p class="muted">Контакты скоро появятся.</p>') + '<p>Задать вопрос можно на форуме или в личных сообщениях.</p><button class="btn" type="button" data-go="forum">Перейти на форум</button>';
+}
+function renderFooter() {
+  const links = [['ads', 'Объявления'], ['financing', 'Финансирование'], ['providers', 'Провайдеры'], ['events', 'Мероприятия'], ['forum', 'Форум']].map(([g, t]) => `<button type="button" data-go="${g}">${t}</button>`).join('');
+  const contact = [SITE.email, SITE.phone].filter(Boolean).map(esc).join('<br>');
+  $('siteFooter').innerHTML = `<div><h4>Connect4Pro</h4><p>Платформа для малого и среднего бизнеса.</p></div><div><h4>Разделы</h4>${links}</div><div><h4>Информация</h4><button type="button" data-go="about">О нас</button><button type="button" data-go="contacts">Контакты</button><button type="button" data-go="account">Premium и регистрация</button>${contact ? `<p>${contact}</p>` : ''}</div>`;
+}
+
+// ---------- аналитика (только администратор) ----------
+const stat = (n, t) => `<div class="card"><div class="stat">${esc(n)}</div><p class="muted small">${t}</p></div>`;
+const tbl = (head, list, cell) => `<table class="t"><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr>${list.map(r => `<tr>${cell(r).map(c => `<td>${c}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${head.length}" class="muted">Нет данных</td></tr>`}</table>`;
+async function loadAnalytics() {
+  if (!S.me || S.me.role !== 'admin') { $('analyticsBody').innerHTML = '<div class="card"><p class="muted">Раздел доступен только администратору.</p></div>'; return; }
+  const d = await req('/analytics/');
+  const turn = Object.fromEntries(TURNOVER);
+  const top = d.most_clicked_ad;
+  $('analyticsBody').innerHTML = `
+    <h3>Посетители</h3><div class="grid">${stat(d.visitors_day, 'за сутки')}${stat(d.visitors_week, 'за неделю')}${stat(d.visitors_month, 'за месяц')}${stat(d.visitors_year, 'за год')}${stat(d.visitors_all_time, 'за всё время')}</div>
+    <h3>Пользователи и контент</h3><div class="grid">${stat(d.total_users, 'пользователей')}${stat(d.total_clients, 'клиентов')}${stat(d.total_providers, 'провайдеров')}${stat(d.premium_subscribers, 'подписчиков Premium')}${stat(d.total_ads, 'объявлений клиентов')}${stat(d.provider_ads, 'предложений провайдеров')}${stat(d.forum_topics, 'тем форума')}${stat(d.forum_posts, 'сообщений форума')}</div>
+    <h3>Сделки и деньги</h3><div class="grid">${stat(d.completed_deals, 'завершённых сделок')}${stat(fmtMoney(d.transaction_volume, 'KGS'), 'оплат через платформу')}${stat(d.shares, 'раз поделились')}</div>
+    <div class="card"><h3>Самое популярное объявление</h3>${top ? `<p><button class="btn" type="button" data-open="ad/${top.object_id}">${esc(d.most_clicked_ad_title || 'Объявление №' + top.object_id)}</button> — переходов: ${esc(top.c)}</p>` : '<p class="muted">Пока нет переходов.</p>'}</div>
+    <div class="grid">
+      <div class="card"><h3>Откуда приходят</h3>${tbl(['Источник', 'Визитов'], d.traffic_sources, r => [esc(r.source || '—'), esc(r.count)])}</div>
+      <div class="card"><h3>Пользователи по регионам</h3>${tbl(['Регион', 'Человек'], d.users_by_region, r => [esc(r.region || 'не указан'), esc(r.count)])}</div>
+      <div class="card"><h3>По обороту</h3>${tbl(['Оборот', 'Человек'], d.users_by_turnover, r => [esc(turn[r.annual_turnover] || 'не указан'), esc(r.count)])}</div>
+      <div class="card"><h3>По числу сотрудников</h3>${tbl(['Сотрудников', 'Человек'], d.users_by_employees, r => [r.employees_count == null ? 'не указано' : esc(r.employees_count), esc(r.count)])}</div>
+    </div>`;
+}
+
+// учёт посещения: один раз за сессию браузера, плюс откуда пришёл человек
+function trackVisit() {
+  try { if (sessionStorage.getItem('c4p_visit') === '1') return; sessionStorage.setItem('c4p_visit', '1'); } catch (e) { return; }
+  let src = new URLSearchParams(location.search).get('utm_source') || '';
+  if (!src && document.referrer) { try { const h = new URL(document.referrer).hostname; if (h && h !== location.hostname) src = h.replace(/^www\./, ''); } catch (e) {} }
+  req('/analytics/track/', { method: 'POST', body: { event_type: 'visit' } }).catch(() => {});
+  req('/analytics/track/', { method: 'POST', body: { event_type: 'traffic', source: (src || 'direct').slice(0, 100) } }).catch(() => {});
+}
+
 // ---------- базы данных ----------
 async function loadDb() {
   const t = $('dbType').value;
   const [d, q] = await Promise.all([
-    req('/database-resources/' + (t ? '?resource_type=' + encodeURIComponent(t) : '')),
+    req('/database-resources/' + qs({ resource_type: t, search: $('dbQ').value.trim() })),
     isPremium() ? req('/database-resources/quota/').catch(() => null) : Promise.resolve(null),
   ]);
   let info;
@@ -522,6 +726,7 @@ async function loadDb() {
   }).join('') || '<p class="empty">Материалов пока нет.</p>';
 }
 $('dbType').onchange = safe(loadDb);
+$('dbQ').oninput = debounced(safe(loadDb));
 $('dbList').addEventListener('click', safe(async e => {
   const b = e.target.closest('[data-unlock]'); if (!b) return;
   await unlock(b.dataset.unlock);
@@ -545,13 +750,18 @@ const saveCalcPay = v => { try { v ? sessionStorage.setItem('calcPay', JSON.stri
 async function loadCalcInfo() {
   await loadPrices();
   $('calcPrice').textContent = isPremium() ? 'Для подписчиков Premium калькулятор бесплатный.' : `Один расчёт стоит ${priceOf('calculator')}. Для подписчиков Premium бесплатно.`;
+  try {
+    const list = await fetchAll('/financing/'), sel = $('calcFin'), want = S.calcFin != null ? String(S.calcFin) : sel.value;
+    sel.innerHTML = '<option value="">Общий расчёт</option>' + list.map(x => `<option value="${x.id}">${esc(LABEL.fin[x.financing_type] || '')}: ${esc(clip(x.title, 60))}</option>`).join('');
+    sel.value = want; S.calcFin = null;
+  } catch (e) {}
 }
 async function calculate() {
-  const body = { annual_turnover: $('turnover').value, employees_count: $('employees').value, sector: $('sector').value, ...(loadCalcPay() || {}) };
+  const body = { annual_turnover: $('turnover').value, employees_count: $('employees').value, sector: $('sector').value, financing: $('calcFin').value || null, ...(loadCalcPay() || {}) };
   try {
     const x = await req('/calculator/', { method: 'POST', body });
     saveCalcPay(null);
-    $('calcResult').innerHTML = `<h3>${esc(x.calculated_probability_percent)}%</h3><p>${esc(x.recommendation)}</p>`;
+    $('calcResult').innerHTML = `<h3>${esc(x.calculated_probability_percent)}%</h3>${x.financing ? `<p class="muted small">Программа: ${esc(x.financing.title)}</p>` : ''}<p>${esc(x.recommendation)}</p>`;
   } catch (e) {
     if (e.status === 402) {
       saveCalcPay(null);
@@ -853,8 +1063,37 @@ const DETAIL = {
   user: [null, renderUser], chat: ['inbox', renderChat],
 };
 function setDetail(seq, html) { if (seq !== routeSeq) return false; $('detailBody').innerHTML = html; return true; }
-async function runDetail(fn, id, seq) {
-  try { await fn(id, seq); }
+const SHARE_TYPES = { ad: 'ad', fin: 'financing', event: 'event', provider: 'provider', topic: 'forum_topic' };
+function shareBlock(key, id, title) {
+  const d = `data-stype="${key}" data-sid="${id}" data-title="${esc(title)}"`;
+  const native = navigator.share ? `<button class="btn" type="button" data-share="native" ${d}>Поделиться…</button>` : '';
+  return `<div class="card"><h4>Поделиться</h4><div class="share">${native}<button class="btn" type="button" data-share="copy" ${d}>Копировать ссылку</button><button class="btn" type="button" data-share="telegram" ${d}>Telegram</button><button class="btn" type="button" data-share="whatsapp" ${d}>WhatsApp</button><button class="btn" type="button" data-share="facebook" ${d}>Facebook</button></div>
+    ${key === 'fin' ? `<p><button class="btn primary" type="button" data-calcfin="${id}">Рассчитать вероятность для этой программы</button></p>` : ''}</div>`;
+}
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text).then(() => true, () => false);
+  const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); return Promise.resolve(ok);
+}
+async function doShare(btn) {
+  const { share: via, stype, sid, title } = btn.dataset;
+  const url = location.origin + location.pathname + '#' + stype + '/' + sid, enc = encodeURIComponent;
+  const links = { telegram: `https://t.me/share/url?url=${enc(url)}&text=${enc(title)}`, whatsapp: `https://wa.me/?text=${enc(title + ' ' + url)}`, facebook: `https://www.facebook.com/sharer/sharer.php?u=${enc(url)}` };
+  if (via === 'copy') { toast(await copyText(url) ? 'Ссылка скопирована.' : 'Не удалось скопировать: ' + url, 'success'); }
+  else if (via === 'native') { try { await navigator.share({ title, url }); } catch (e) { return; } }
+  else window.open(links[via], '_blank', 'noopener');
+  // учёт: для объявлений — отдельный адрес, для остальных — общий
+  const track = stype === 'ad'
+    ? req(`/ads/${sid}/share/`, { method: 'POST', body: { source: via } })
+    : req('/analytics/track/', { method: 'POST', body: { event_type: 'share', object_type: SHARE_TYPES[stype], object_id: Number(sid), source: via } });
+  track.catch(() => {});
+}
+async function runDetail(fn, id, seq, key) {
+  try {
+    await fn(id, seq);
+    if (seq === routeSeq && SHARE_TYPES[key] && $('detailBody').querySelector('h2'))
+      $('detailBody').insertAdjacentHTML('beforeend', shareBlock(key, id, $('detailBody').querySelector('h2').textContent));
+  }
   catch (e) {
     if (e.silent || seq !== routeSeq) return;
     $('detailBody').innerHTML = `<div class="card"><p>${esc(e.status === 404 ? 'Страница не найдена или уже удалена.' : e.message)}</p><button class="btn" type="button" data-go="home">На главную</button></div>`;
@@ -896,7 +1135,7 @@ async function renderAd(id, seq) {
     <div class="card"><span class="pill ${x.listing_type !== 'request' ? 'ok' : ''}">${esc(LABEL.kind[x.listing_type] || 'Запрос')}</span>${x.is_completed ? '<span class="pill ok">Сделка завершена</span>' : ''}
       <h2>${esc(x.title)}</h2>
       <p><b>${fmtMoney(x.price, x.currency)}</b></p>
-      ${x.tags ? `<p>${tagPills(x.tags)}</p>` : ''}
+      ${x.tags ? `<p>${tagPills(x.tags, 'ads')}</p>` : ''}
       <div class="content">${esc(x.description)}</div>
       ${x.what_i_offer_optional ? `<div class="kv"><b>Автор предлагает</b>${esc(x.what_i_offer_optional)}</div>` : ''}
       ${photos ? `<div class="photos">${photos}</div>` : ''}
@@ -1069,7 +1308,10 @@ $('detailBody').addEventListener('click', safe(async e => {
 
 // ---------- старт ----------
 (async function init() {
+  buildNav();
+  renderFooter();
   await loadMe();
+  trackVisit();
   route();
   setInterval(() => { if (S.me && !document.hidden) updateBadge(); }, 30000);
 })();
