@@ -3,7 +3,7 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
-from django.db.models import Q, Count, Case, When, Value, IntegerField
+from django.db.models import Q, Count, Case, When, Value, IntegerField, Sum
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -17,7 +17,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError, NotAuthenticated, NotFound, Throttled
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from .permissions import IsPremiumOrReadOnly, IsAdminOrReadOnly, IsOwnerOrAdmin, IsProviderOwnerOrAdmin
+from .permissions import IsPremiumOrReadOnly, IsAdminOrReadOnly, IsOwnerOrAdmin, IsProviderOwnerOrAdmin, IsPremium
 from .models import *
 from .serializers import *
 from rest_framework.views import APIView
@@ -158,6 +158,14 @@ class ProviderProfileViewSet(viewsets.ModelViewSet):
     search_fields = ['company_name', 'activity', 'description', 'services_description']
     def get_queryset(self):
         return ProviderProfile.objects.all().select_related('provider')
+    def retrieve(self, request, *args, **kwargs):
+        response = super().retrieve(request, *args, **kwargs)
+        obj = self.get_object()
+        if obj.provider_id != (request.user.id if request.user.is_authenticated else None):
+            AnalyticsEvent.objects.create(
+                event_type='click', user=request.user if request.user.is_authenticated else None,
+                object_type='provider', object_id=obj.id)
+        return response
     def perform_create(self, serializer):
         user = self.request.user
         if user.role not in ('provider', 'admin'):
@@ -369,7 +377,23 @@ class NotificationSubscriptionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         if NotificationSubscription.objects.filter(user=self.request.user).exists(): raise ValidationError('Настройки уже существуют.')
         serializer.save(user=self.request.user, email=self.request.user.email)
-    def perform_update(self, serializer): serializer.save(email=serializer.validated_data.get('email', self.request.user.email))
+    def perform_update(self, serializer):
+        extra = {'email': serializer.validated_data.get('email', self.request.user.email)}
+        if serializer.validated_data.get('active') and not serializer.instance.active:
+            extra['last_notified_at'] = timezone.now()  # после повторного включения старое не присылаем
+        serializer.save(**extra)
+
+    @action(detail=False, methods=['get'], permission_classes=[AllowAny], authentication_classes=[], url_path='unsubscribe')
+    def unsubscribe(self, request):
+        from . import mailing
+        sub = mailing.subscription_from_token(request.query_params.get('token', ''))
+        if not sub:
+            return HttpResponse('Ссылка недействительна.', status=400, content_type='text/plain; charset=utf-8')
+        if sub.active:
+            sub.active = False
+            sub.save(update_fields=['active'])
+        return HttpResponse('Вы отписались от рассылки Connect4Pro. Включить её снова можно в разделе «Аккаунт».',
+                            content_type='text/plain; charset=utf-8')
 
 
 class PaymentTransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
@@ -676,6 +700,47 @@ class PlatformAnalyticsView(APIView):
             'users_by_region':list(User.objects.values('region').annotate(count=Count('id')).order_by('-count')),
             'users_by_turnover':list(User.objects.values('annual_turnover').annotate(count=Count('id')).order_by('-count')),
             'users_by_employees':list(User.objects.values('employees_count').annotate(count=Count('id')).order_by('-count')),
+        })
+
+
+class ProviderAnalyticsView(APIView):
+    """Базовая аналитика кабинета провайдера. Только Premium."""
+    permission_classes = [IsAuthenticated, IsPremium]
+
+    def get(self, request):
+        user = request.user
+        if user.role not in ('provider', 'admin'):
+            raise PermissionDenied('Аналитика доступна только провайдерам.')
+        now = timezone.now()
+        periods = {'day': now - timedelta(days=1), 'week': now - timedelta(days=7), 'month': now - timedelta(days=30)}
+        profile = ProviderProfile.objects.filter(provider=user).first()
+
+        def events(kind):
+            if not profile:
+                return AnalyticsEvent.objects.none()
+            return AnalyticsEvent.objects.filter(event_type=kind, object_type='provider', object_id=profile.id)
+
+        def by_period(qs):
+            data = {k: qs.filter(created_at__gte=since).count() for k, since in periods.items()}
+            data['all_time'] = qs.count()
+            return data
+
+        apps = Application.objects.filter(provider_service__provider=user)
+        deals = Deal.objects.filter(provider=user)
+        per_service = list(
+            ProviderService.objects.filter(provider=user)
+            .annotate(applications_count=Count('applications', distinct=True), deals_count=Count('deals', distinct=True))
+            .values('id', 'title', 'applications_count', 'deals_count')
+            .order_by('-applications_count', 'title'))
+        return Response({
+            'has_profile': bool(profile),
+            'profile_views': by_period(events('click')),
+            'profile_shares': by_period(events('share')),
+            'applications_total': apps.count(),
+            'applications_by_status': {s: apps.filter(status=s).count() for s, _ in Application.STATUS_CHOICES},
+            'deals_by_status': {s: deals.filter(status=s).count() for s, _ in Deal.STATUS_CHOICES},
+            'deals_completed_amount': str(deals.filter(status='completed').aggregate(s=Sum('amount'))['s'] or 0),
+            'services': per_service,
         })
 
 

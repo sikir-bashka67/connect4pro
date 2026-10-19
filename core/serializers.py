@@ -344,7 +344,7 @@ class NotificationSubscriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = NotificationSubscription
         fields = '__all__'
-        read_only_fields = ['user']
+        read_only_fields = ['user', 'last_notified_at']
 
 
 class PaymentTransactionSerializer(serializers.ModelSerializer):

@@ -208,6 +208,7 @@ footer.site h4{color:#fff;margin:0 0 8px}footer.site a,footer.site button{color:
     <form class="card hidden" id="profileForm"><h3>Редактировать профиль</h3><div id="profileFields"></div>
       <button class="btn primary" type="submit">Сохранить</button><button class="btn" type="button" id="profileCancel">Отмена</button></form>
     <div class="card" id="quotaCard"></div>
+    <div class="card" id="notifyCard"></div>
     <div class="card hidden" id="adFormCard"><h3>Новое объявление</h3>
       <div class="cols"><div><label for="adKind">Тип</label><select id="adKind"><option value="request">Запрос услуги</option><option value="sell_share">Продаю долю</option><option value="buy_share">Куплю долю</option></select></div>
       <div><label for="adCat">Категория</label><select id="adCat"><option value="">— без категории —</option></select></div></div>
@@ -226,6 +227,7 @@ footer.site h4{color:#fff;margin:0 0 8px}footer.site a,footer.site button{color:
       <form class="card hidden" id="provProfileForm"><h3>Профиль компании</h3><div id="provProfileFields"></div>
         <button class="btn primary" type="submit">Сохранить</button><button class="btn" type="button" id="provProfileCancel">Отмена</button></form>
       <div class="card"><h3>Мои услуги</h3><div id="myServices"></div><button class="btn primary" type="button" id="svcNew">Добавить услугу</button></div>
+      <div class="card" id="provAnalyticsCard"><h3>Аналитика кабинета</h3><div id="provAnalyticsBody" class="small muted">Загрузка…</div></div>
       <form class="card hidden" id="svcForm"><h3 id="svcFormTitle">Новая услуга</h3><div id="svcFields"></div>
         <button class="btn primary" type="submit">Сохранить услугу</button><button class="btn" type="button" id="svcCancel">Отмена</button></form>
     </div>
@@ -801,6 +803,7 @@ async function loadAccount() {
   const bp = $('buyPremium'); if (bp) bp.onclick = safe(async () => { if (await buy('premium', 'Подписка Premium')) loadAccount(); });
 
   await renderQuota();
+  await renderNotify();
   const isClient = m.role === 'client' || m.role === 'admin';
   $('adFormCard').classList.toggle('hidden', !isClient);
   $('myAdsCard').classList.toggle('hidden', !isClient);
@@ -810,6 +813,28 @@ async function loadAccount() {
   await renderCrm();
   await renderPayments();
 }
+async function renderNotify() {
+  const n = S.notify = rows(await req('/notifications/'))[0] || null;
+  const v = n || { financing_updates: true, sector_updates: false, sector: '' };
+  const cb = (id, on, text) => `<label style="display:block;margin:6px 0"><input type="checkbox" id="${id}" ${on ? 'checked' : ''} style="width:auto;margin:0 8px 0 0">${text}</label>`;
+  $('notifyCard').innerHTML = `<h3>Рассылка о грантах и инвестициях</h3>
+    <p class="muted small">Письма приходят на ${S.me.email ? esc(S.me.email) : 'почту из профиля (сейчас она не указана)'}. В каждом письме есть ссылка «Отписаться».</p>
+    ${cb('nfActive', n && n.active, 'Получать рассылку')}
+    ${cb('nfFin', v.financing_updates, 'Все новые гранты и инвестиции')}
+    ${cb('nfSec', v.sector_updates, 'Только новые программы моего сектора')}
+    <input id="nfSector" placeholder="Сектор, например IT" value="${esc(v.sector)}" aria-label="Сектор">
+    <button class="btn primary" type="button" id="nfSave">Сохранить</button>`;
+}
+$('notifyCard').addEventListener('click', safe(async e => {
+  if (!e.target.closest('#nfSave')) return;
+  const body = { active: $('nfActive').checked, financing_updates: $('nfFin').checked, sector_updates: $('nfSec').checked, sector: $('nfSector').value.trim() };
+  if (body.active && !S.me.email) return toast('Укажите почту в профиле, иначе письма некуда отправлять.', 'warn');
+  if (body.active && !body.financing_updates && !(body.sector_updates && body.sector)) return toast('Выберите, что присылать: все программы или свой сектор (и впишите его).', 'warn');
+  if (S.notify) await req(`/notifications/${S.notify.id}/`, { method: 'PATCH', body });
+  else await req('/notifications/', { method: 'POST', body });
+  toast('Настройки рассылки сохранены.', 'success');
+  await renderNotify();
+}));
 async function renderQuota() {
   if (!isPremium() || S.me.role === 'admin') {
     $('quotaCard').innerHTML = `<h3>Базы данных</h3><p class="muted">${S.me.role === 'admin' ? 'Администратор видит все материалы без ограничений.' : 'Подписка Premium открывает 10 проектов и 10 бизнес-планов, а также позволяет докупать пакеты по 50.'}</p>`;
@@ -912,6 +937,7 @@ async function renderProviderBox() {
     : `<h3>Профиль компании</h3><p class="muted">Заполните профиль, чтобы клиенты нашли вас в разделе «Провайдеры».</p><button class="btn primary" type="button" id="provEdit">Заполнить профиль</button>`;
   $('provEdit').onclick = openProvForm;
   await renderMyServices();
+  renderProviderAnalytics();
 }
 function closeProvForm() { $('provProfileForm').classList.add('hidden'); $('provProfileCard').classList.remove('hidden'); }
 function openProvForm() {
@@ -945,6 +971,25 @@ $('provProfileForm').onsubmit = safe(async e => {
   await renderProviderBox();
 });
 
+async function renderProviderAnalytics() {
+  const box = $('provAnalyticsBody');
+  try {
+    const d = await req('/analytics/provider/');
+    const st = (n, t) => `<div class="card" style="box-shadow:none;border:1px solid #e6eaf2"><div class="stat">${esc(n)}</div><p class="muted small">${t}</p></div>`;
+    const pv = d.profile_views, sh = d.profile_shares, a = d.applications_by_status, dl = d.deals_by_status;
+    box.className = '';
+    box.innerHTML = `
+      <h4>Просмотры вашего профиля</h4><div class="grid">${st(pv.day, 'за сутки')}${st(pv.week, 'за неделю')}${st(pv.month, 'за месяц')}${st(pv.all_time, 'за всё время')}</div>
+      <p class="muted small">Поделились профилем: за неделю ${esc(sh.week)}, за всё время ${esc(sh.all_time)}.${d.has_profile ? '' : ' Заполните профиль компании, чтобы считались просмотры.'}</p>
+      <h4>Заявки и сделки</h4><div class="grid">${st(d.applications_total, 'заявок всего')}${st(a.pending || 0, 'в рассмотрении')}${st(a.approved || 0, 'одобрено')}${st(a.rejected || 0, 'отклонено')}${st(dl.started || 0, 'сделок в работе')}${st(dl.completed || 0, 'завершено')}${st(fmtMoney(d.deals_completed_amount, 'KGS'), 'сумма завершённых сделок')}</div>
+      <h4>По услугам</h4>${tbl(['Услуга', 'Заявок', 'Сделок'], d.services, r => [esc(r.title), esc(r.applications_count), esc(r.deals_count)])}`;
+  } catch (e) {
+    box.className = 'small muted';
+    box.innerHTML = e.status === 403 || /Premium/.test(e.message || '')
+      ? 'Аналитика кабинета доступна по подписке Premium: просмотры профиля, заявки и сделки по каждой услуге.'
+      : esc(e.message || 'Не удалось загрузить аналитику.');
+  }
+}
 async function renderMyServices() {
   const list = S.svcs = rows(await req('/provider-services/?provider=' + S.me.id));
   closeSvcForm();

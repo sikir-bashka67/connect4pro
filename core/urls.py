@@ -5,7 +5,7 @@ from .views import (
     ProviderServicePhotoViewSet, FinancingViewSet, EventViewSet, DatabaseResourceViewSet,
     GrantProbabilityCalculatorView, PlatformAnalyticsView, TrackAnalyticsView, ApplicationViewSet,
     ForumTopicViewSet, ForumPostViewSet, NotificationSubscriptionViewSet, PaymentTransactionViewSet,
-    DealViewSet, MessageViewSet, PriceHintsView, PublicUserView, MeView, PremiumClientDirectoryView, ClientDirectoryView, PayboxWebhookView,
+    DealViewSet, MessageViewSet, PriceHintsView, PublicUserView, MeView, PremiumClientDirectoryView, ClientDirectoryView, PayboxWebhookView, ProviderAnalyticsView,
 )
 
 router = DefaultRouter()
@@ -27,4 +27,5 @@ urlpatterns = [
     path('price-hints/', PriceHintsView.as_view(), name='price-hints'),
     path('calculator/', GrantProbabilityCalculatorView.as_view(), name='grant-calculator'),
     path('analytics/', PlatformAnalyticsView.as_view(), name='platform-analytics'), path('analytics/track/', TrackAnalyticsView.as_view(), name='analytics-track'),
+    path('analytics/provider/', ProviderAnalyticsView.as_view(), name='provider-analytics'),
 ]
